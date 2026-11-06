@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  validateExpense,
   forecast,
   cardBillLines,
   currentInvoiceMonth,
@@ -48,6 +49,7 @@ const expense = (p: Partial<Expense> = {}): Expense => ({
   method: 'credit',
   cardId: 'c1',
   installments: 6,
+  firstInvoiceMonth: null,
   ...p,
 });
 const bill = (p: Partial<Bill> = {}): Bill => ({
@@ -306,6 +308,20 @@ describe('previsão do próximo mês com contas no cartão', () => {
     expect(f.cards[0].bills[0].bill.name).toBe('Oficina');
     expect(f.installments).toBe(25450);
     expect(f.commitments).toBe(359000 + 25450);
+  });
+});
+
+describe('fatura da 1ª parcela escolhida', () => {
+  it('sem escolha, segue a data e o fechamento', () => {
+    expect(buildInstallments(expense(), card())[0].invoiceMonth).toBe('2026-12');
+  });
+  it('com escolha, as parcelas começam na fatura escolhida', () => {
+    const inst = buildInstallments(expense({ firstInvoiceMonth: '2027-01', installments: 2, amountCents: 50900 }), card());
+    expect(inst.map((i) => i.invoiceMonth)).toEqual(['2027-01', '2027-02']);
+  });
+  it('não aceita fatura anterior ao mês da compra', () => {
+    expect(validateExpense({ ...expense(), firstInvoiceMonth: '2026-10' })).toMatch(/anterior/);
+    expect(validateExpense({ ...expense(), firstInvoiceMonth: '2026-11' })).toBeNull();
   });
 });
 

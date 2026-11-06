@@ -774,26 +774,14 @@ function RecurrenceFields({ v, onChange, lockStart }: { v: RecState; onChange: (
   const setEnd = (m: Month | null) =>
     onChange({ ...v, endMonth: m, installments: m && m >= v.startMonth ? cur - 1 + billCountBetween(v.startMonth, m, v.frequency) : null });
   const setStart = (m: Month) => onChange({ ...v, startMonth: m, endMonth: v.installments ? endFor(v.installments, cur, m, step) : v.endMonth });
-  const setFreq = (f: Frequency) => onChange({ ...v, frequency: f, endMonth: v.installments ? endFor(v.installments, cur, v.startMonth, FREQUENCY_MONTHS[f]) : v.endMonth });
   const invalidCurrent = !!v.installments && cur > v.installments;
   const remaining = v.installments ? v.installments - cur + 1 : null;
 
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Frequência">
-          <Select value={v.frequency} onChange={(x) => setFreq(x as Frequency)}>
-            {(Object.keys(FREQUENCY_LABEL) as Frequency[]).map((k) => (
-              <option key={k} value={k}>
-                {FREQUENCY_LABEL[k]}
-              </option>
-            ))}
-          </Select>
-        </Field>
-        <Field label="Mês de início">
-          <Input type="month" value={v.startMonth} disabled={lockStart} onChange={(e) => e.target.value && setStart(e.target.value)} />
-        </Field>
-      </div>
+      <Field label="Mês de início" hint="Cobrança mensal.">
+        <Input type="month" value={v.startMonth} disabled={lockStart} onChange={(e) => e.target.value && setStart(e.target.value)} />
+      </Field>
       <Segmented
         value={v.hasEnd ? 'end' : 'open'}
         onChange={(x) => onChange({ ...v, hasEnd: x === 'end', ...(x === 'open' ? { installments: null, endMonth: null, current: 1 } : {}) })}
@@ -832,7 +820,7 @@ function RecurrenceFields({ v, onChange, lockStart }: { v: RecState; onChange: (
   );
 }
 
-export function BillForm({ open, onClose, presetCardId }: { open: boolean; onClose: () => void; presetCardId?: string }) {
+export function BillForm({ open, onClose }: { open: boolean; onClose: () => void }) {
   const data = useStore((s) => s.data);
   const me = useStore((s) => s.me);
   const createBill = useStore((s) => s.createBill);
@@ -844,7 +832,7 @@ export function BillForm({ open, onClose, presetCardId }: { open: boolean; onClo
     amount: 0,
     categoryId: cats.find((c) => c.name === 'Moradia')?.id ?? cats[0]?.id ?? '',
     responsible: me.person as Responsible,
-    cardId: presetCardId ?? '',
+    cardId: '',
     dueDay: 10,
     rec: { frequency: 'monthly' as Frequency, startMonth: month < currentMonth() ? currentMonth() : month, hasEnd: false, installments: null, current: 1, endMonth: null } as RecState,
   }));
@@ -882,7 +870,7 @@ export function BillForm({ open, onClose, presetCardId }: { open: boolean; onClo
   }
 
   return (
-    <Sheet open={open} onClose={onClose} title="Nova conta fixa" subtitle={presetCardId ? `Cobrada no cartão ${data.cards.find((c) => c.id === presetCardId)?.name ?? ''}` : undefined} footer={<Button size="lg" className="w-full" disabled={!valid} loading={busy} onClick={save}>Cadastrar conta</Button>}>
+    <Sheet open={open} onClose={onClose} title="Nova conta fixa" footer={<Button size="lg" className="w-full" disabled={!valid} loading={busy} onClick={save}>Cadastrar conta</Button>}>
       <div className="space-y-4">
         <Field label="Nome da conta">
           <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ex.: Aluguel, Internet, Academia…" maxLength={50} autoFocus />
@@ -907,8 +895,10 @@ export function BillForm({ open, onClose, presetCardId }: { open: boolean; onClo
         <Field label="Responsável" hint="Apenas para organização — o valor sai do orçamento compartilhado.">
           <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={RESPONSIBLES.map((p) => ({ value: p, ariaLabel: PERSON_LABEL[p], label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span> }))} />
         </Field>
-        <ChargeField value={f.cardId} onChange={(cardId) => setF({ ...f, cardId })} />
         <RecurrenceFields v={f.rec} onChange={(rec) => setF({ ...f, rec })} />
+        <p className="rounded-2xl bg-slate-50 p-3 text-[12px] leading-relaxed text-slate-500 dark:bg-ink-900">
+          Contas fixas saem do dinheiro (boleto, Pix ou débito automático). Compras no cartão de crédito são gastos variáveis: use <b>Adicionar gasto</b>.
+        </p>
       </div>
     </Sheet>
   );
@@ -976,7 +966,14 @@ function BillInfoSheet({ bill, open, onClose }: { bill: Bill; open: boolean; onC
         <Field label="Responsável">
           <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={RESPONSIBLES.map((p) => ({ value: p, ariaLabel: PERSON_LABEL[p], label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span> }))} />
         </Field>
-        <ChargeField value={f.cardId} onChange={(cardId) => setF({ ...f, cardId })} />
+        {bill.cardId && (
+          <div className="space-y-2 rounded-2xl bg-amber-50 p-3 text-[13px] leading-relaxed text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+            <p>
+              Esta conta está no cartão — o ideal é tratá-la como <b>gasto variável</b>. Converta na tela do cartão (<b>Converter em gasto</b>).
+            </p>
+            <ChargeField value={f.cardId} onChange={(cardId) => setF({ ...f, cardId })} />
+          </div>
+        )}
         <RecurrenceFields lockStart v={f.rec} onChange={(rec) => setF({ ...f, rec: { ...rec, startMonth: bill.startMonth } })} />
         <p className="text-[12px] text-slate-500">Para mudar valor ou vencimento, toque em um mês no histórico e escolha se vale só para ele ou também para os próximos.</p>
       </div>

@@ -4,9 +4,10 @@ import { supabase, isSupabaseConfigured } from '../lib/supabase';
 import { DemoRepository, SupabaseRepository, tableName, type Repository, type Row } from '../data/repository';
 import { demoData, initialData } from '../data/seed';
 import { uid, nowISO } from '../lib/id';
-import { addMonths, currentMonth, todayISO, type Month } from '../lib/months';
+import { addMonths, currentMonth, monthLabel, monthRange, todayISO, type Month } from '../lib/months';
 import {
   benefitBalance,
+  billEndMonth,
   billLine,
   buildInstallments,
   cardBillLines,
@@ -87,7 +88,7 @@ interface State {
 
   toasts: Toast[];
   confirmReq: ConfirmRequest | null;
-  expenseSheet: { open: boolean; editId: string | null };
+  expenseSheet: { open: boolean; editId: string | null; presetCardId?: string | null };
 
   // ciclo de vida
   init(): Promise<void>;
@@ -107,7 +108,8 @@ interface State {
   toast(text: string, kind?: Toast['kind']): void;
   dismissToast(id: string): void;
   confirm(req: Omit<ConfirmRequest, 'resolve'>): Promise<boolean>;
-  openExpense(editId?: string | null): void;
+  /** Abre o "Adicionar gasto". Com presetCardId, já vem em crédito nesse cartão. */
+  openExpense(editId?: string | null, presetCardId?: string | null): void;
   closeExpense(): void;
 
   // despesas
@@ -142,6 +144,8 @@ interface State {
   resumeBill(billId: string, at: Month): Promise<void>;
   endBill(billId: string, lastMonth: Month): Promise<void>;
   deleteBill(billId: string): Promise<void>;
+  /** Converte uma conta cobrada no cartão em gasto variável (compra parcelada) nas mesmas faturas. */
+  convertBillToExpense(billId: string): Promise<boolean>;
 }
 
 /* ───────────────────────────── Infra ───────────────────────────── */
@@ -520,9 +524,9 @@ export const useStore = create<State>((set, get) => {
     confirm(req) {
       return new Promise<boolean>((resolve) => set({ confirmReq: { ...req, resolve: (ok) => (set({ confirmReq: null }), resolve(ok)) } }));
     },
-    openExpense: (editId = null) => {
-      writeSession(SHEET_KEY, { open: true, editId });
-      set({ expenseSheet: { open: true, editId } });
+    openExpense: (editId = null, presetCardId = null) => {
+      writeSession(SHEET_KEY, { open: true, editId, presetCardId });
+      set({ expenseSheet: { open: true, editId, presetCardId } });
     },
     closeExpense: () => {
       writeSession(SHEET_KEY, null);
@@ -538,6 +542,7 @@ export const useStore = create<State>((set, get) => {
         description: input.description.trim(),
         cardId: input.method === 'credit' || input.method === 'benefit' ? input.cardId : null,
         installments: input.method === 'credit' ? input.installments : 1,
+        firstInvoiceMonth: input.method === 'credit' ? input.firstInvoiceMonth ?? null : null,
       };
       const err = validateExpense(clean);
       if (err) return { ok: false, error: err };
@@ -548,7 +553,13 @@ export const useStore = create<State>((set, get) => {
 
       const prev = clean.id ? d.expenses.find((e) => e.id === clean.id) : null;
       if (prev && expenseLocked(d, prev.id)) {
-        const financialChange = prev.amountCents !== clean.amountCents || prev.cardId !== clean.cardId || prev.installments !== clean.installments || prev.method !== clean.method || prev.date !== clean.date;
+        const financialChange =
+          prev.amountCents !== clean.amountCents ||
+          prev.cardId !== clean.cardId ||
+          prev.installments !== clean.installments ||
+          prev.method !== clean.method ||
+          prev.date !== clean.date ||
+          (prev.firstInvoiceMonth ?? null) !== (clean.firstInvoiceMonth ?? null);
         if (financialChange) return { ok: false, error: 'Esta compra tem parcela em fatura já paga. Só é possível alterar descrição, categoria e responsável.' };
       }
       if (!opts.allowDuplicate) {
@@ -559,7 +570,14 @@ export const useStore = create<State>((set, get) => {
       const now = nowISO();
       const exp: Expense = { ...clean, id: prev?.id ?? uid(), createdAt: prev?.createdAt ?? now, updatedAt: now } as Expense;
       const oldInst = d.installments.filter((i) => i.expenseId === exp.id);
-      const regen = !prev || prev.amountCents !== exp.amountCents || prev.cardId !== exp.cardId || prev.installments !== exp.installments || prev.method !== exp.method || prev.date !== exp.date;
+      const regen =
+        !prev ||
+        prev.amountCents !== exp.amountCents ||
+        prev.cardId !== exp.cardId ||
+        prev.installments !== exp.installments ||
+        prev.method !== exp.method ||
+        prev.date !== exp.date ||
+        (prev.firstInvoiceMonth ?? null) !== (exp.firstInvoiceMonth ?? null);
       const newInst = regen && exp.method === 'credit' && card ? buildInstallments(exp, card) : [];
       await commit(
         {
@@ -845,6 +863,73 @@ export const useStore = create<State>((set, get) => {
       if (lastMonth < b.startMonth) return get().toast('O término deve ser depois do início', 'error');
       await commit({ upsert: { bills: rows([{ ...b, endMonth: lastMonth, installments: null }]) } }, 'Conta encerrada');
     },
+    async convertBillToExpense(billId) {
+      const d = get().data;
+      const b = d.bills.find((x) => x.id === billId);
+      const card = b?.cardId ? d.cards.find((c) => c.id === b.cardId) : null;
+      if (!b || !card) return false;
+      const end = billEndMonth(b);
+      if (!end) {
+        get().toast(`${b.name} não tem término — defina a quantidade de parcelas antes de converter`, 'error');
+        return false;
+      }
+      const paidInvoices = new Set(d.invoicePayments.filter((p) => p.cardId === card.id).map((p) => p.month));
+      const lines = monthRange(b.startMonth, end)
+        .map((m) => billLine(d, b, m))
+        .filter((l): l is NonNullable<typeof l> => !!l);
+      const open = lines.filter((l) => !l.paid && !paidInvoices.has(l.month));
+      const first = open[0]?.month;
+      const occIds = (from: Month) => d.billOccurrences.filter((o) => o.billId === b.id && o.month >= from).map((o) => o.id);
+
+      const ch: Changes = { upsert: {}, remove: {} };
+      if (open.length) {
+        if (open.length > 48) {
+          get().toast('Mais de 48 parcelas restantes — não é possível converter', 'error');
+          return false;
+        }
+        const now = nowISO();
+        const exp: Expense = {
+          id: uid(),
+          createdAt: now,
+          updatedAt: now,
+          amountCents: open.reduce((a, l) => a + l.amountCents, 0),
+          description: b.name,
+          categoryId: b.categoryId,
+          responsible: b.responsible,
+          date: todayISO() < `${first}-01` ? todayISO() : `${first}-01`,
+          method: 'credit',
+          cardId: card.id,
+          installments: open.length,
+          firstInvoiceMonth: first!,
+        };
+        // Mantém o valor exato de cada mês (as versões da conta podem ter valores diferentes).
+        const inst = buildInstallments(exp, card).map((i, k) => ({ ...i, amountCents: open[k].amountCents }));
+        ch.upsert!.expenses = rows([exp]);
+        ch.upsert!.installments = rows(inst);
+      }
+      const hasHistory = lines.some((l) => l.month < (first ?? '9999-99'));
+      if (first && !hasHistory) {
+        // Nada pago ainda: a conta vira o gasto por inteiro.
+        ch.remove = {
+          bills: [b.id],
+          billVersions: d.billVersions.filter((v) => v.billId === b.id).map((v) => v.id),
+          billOccurrences: d.billOccurrences.filter((o) => o.billId === b.id).map((o) => o.id),
+        };
+      } else {
+        // Meses já pagos ficam no histórico; o restante passa a ser o gasto.
+        const lastKept = first ? addMonths(first, -1) : end;
+        ch.upsert!.bills = rows([{ ...b, endMonth: lastKept, installments: null, installmentOffset: 0, archivedAt: nowISO() }]);
+        if (first) ch.remove = { billOccurrences: occIds(first) };
+      }
+      await commit(
+        ch,
+        open.length
+          ? `${b.name} agora é um gasto no ${card.name} (${open.length}x na fatura de ${monthLabel(first!)})`
+          : `${b.name} já estava quitada — mantida só no histórico`,
+      );
+      return true;
+    },
+
     async deleteBill(billId) {
       const d = get().data;
       const b = d.bills.find((x) => x.id === billId);

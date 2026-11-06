@@ -5,9 +5,9 @@ import { billLines, byResponsible, groupSum, incomeLines, monthSummary, spending
 import { PAYMENT_LABEL, PERSON_LABEL, RESPONSIBLES, type PaymentMethod } from '../domain/types';
 import { brl, brlCompact, pct } from '../lib/money';
 import { addMonths, fmtDate, monthLabel, monthOf, monthShort } from '../lib/months';
-import { Card, ListRow, Money, MonthSwitcher, PageHeader, Segmented, SectionTitle, cx } from '../components/ui';
+import { Card, ListRow, Money, MonthSwitcher, PageHeader, SectionTitle, cx, span5 } from '../components/ui';
 import { CategoryIcon } from '../components/icons';
-import { HScroll } from '../components/interaction';
+import { OptionTile } from '../components/filters';
 import { PersonAvatar, RESPONSIBLE_COLOR } from '../components/people';
 
 /* Paleta categórica validada (ordem fixa) + tinta de gráfico, clara e escura. */
@@ -230,20 +230,21 @@ export function ReportsPage() {
       </Card>
 
       <SectionTitle>Detalhes do mês</SectionTitle>
-      <HScroll className="-mx-4 md:mx-0" innerClassName="px-4 md:px-0">
-        <Segmented
-          className="min-w-[520px] flex-1"
-          value={detail}
-          onChange={setDetail}
-          options={[
-            { value: 'incomes', label: 'Receitas' },
-            { value: 'bills', label: 'Contas' },
-            { value: 'credit', label: 'Crédito' },
-            { value: 'installments', label: 'Parcelas' },
-            { value: 'benefit', label: 'Benefícios' },
-          ]}
-        />
-      </HScroll>
+      <div className="grid grid-cols-6 gap-2 md:grid-cols-5" role="group" aria-label="Detalhes do mês">
+        {(
+          [
+            ['incomes', 'Receitas'],
+            ['bills', 'Contas'],
+            ['credit', 'Crédito'],
+            ['installments', 'Parcelas'],
+            ['benefit', 'Benefícios'],
+          ] as [typeof detail, string][]
+        ).map(([v, l], i) => (
+          <OptionTile key={v} className={cx(span5(i), 'md:col-span-1')} active={detail === v} onClick={() => setDetail(v)}>
+            {l}
+          </OptionTile>
+        ))}
+      </div>
       <Card className="mt-5">
         <DetailList kind={detail} catById={catById} cardById={cardById} />
       </Card>

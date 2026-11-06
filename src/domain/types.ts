@@ -83,6 +83,11 @@ export interface Expense extends Base {
   cardId: string | null;
   /** Quantidade de parcelas (somente crédito; 1 = à vista). */
   installments: number;
+  /**
+   * Fatura da 1ª parcela escolhida manualmente (ex.: o banco lançou na fatura seguinte).
+   * null = calculada pela data da compra e pelo fechamento do cartão.
+   */
+  firstInvoiceMonth: Month | null;
   updatedAt: string;
 }
 

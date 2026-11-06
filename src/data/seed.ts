@@ -196,6 +196,7 @@ export function demoData(): FinanceData {
         method,
         cardId: c?.id ?? null,
         installments: method === 'credit' ? inst ?? 1 : 1,
+        firstInvoiceMonth: null,
       };
       d.expenses.push(e);
       if (method === 'credit' && c) d.installments.push(...buildInstallments(e, c));

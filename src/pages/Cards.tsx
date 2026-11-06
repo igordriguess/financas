@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { CalendarClock, Check, ChevronLeft, ChevronRight, CheckCircle2, CreditCard, Gift, Link2, Pencil, Plus, RefreshCcw, Search, Trash2, Undo2, Unlink, Wallet } from 'lucide-react';
+import { ChevronLeft, ChevronRight, CheckCircle2, CreditCard, Gift, Info, Pencil, Plus, RefreshCcw, Shuffle, Trash2, Undo2, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import {
   benefitBalance,
@@ -23,7 +23,6 @@ import { addMonths, fmtDate, monthLabel, monthShort, todayISO, type Month } from
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input, ListRow, Money, MoneyInput, PageHeader, Progress, Segmented, SectionTitle, Sheet, cx, useResetOnOpen } from '../components/ui';
 import { CategoryIcon } from '../components/icons';
 import { PersonGlyph, PersonTag, WithOwner } from '../components/people';
-import { BillForm } from './Bills';
 
 const STATUS: Record<InvoiceStatus, { label: string; tone: 'gray' | 'green' | 'red' | 'blue' | 'amber' }> = {
   open: { label: 'Aberta', tone: 'blue' },
@@ -178,15 +177,14 @@ function CreditDetail({ card }: { card: CardT }) {
   const data = useStore((s) => s.data);
   const payInvoice = useStore((s) => s.payInvoice);
   const unpayInvoice = useStore((s) => s.unpayInvoice);
-  const setBillsCard = useStore((s) => s.setBillsCard);
   const confirm = useStore((s) => s.confirm);
   const openExpense = useStore((s) => s.openExpense);
   const nav = useNavigate();
   const today = todayISO();
   const [month, setMonth] = useState<Month>(() => currentInvoiceMonth(data, card, today));
   const [limitSheet, setLimitSheet] = useState<'total' | 'available' | null>(null);
-  const [newBill, setNewBill] = useState(false);
-  const [linkOpen, setLinkOpen] = useState(false);
+  const [converting, setConverting] = useState<string | null>(null);
+  const convertBillToExpense = useStore((s) => s.convertBillToExpense);
   const u = creditUsage(data, card, today);
   const total = invoiceTotal(data, card.id, month);
   const status = invoiceStatus(data, card, month, today);
@@ -199,7 +197,6 @@ function CreditDetail({ card }: { card: CardT }) {
     .sort((a, b) => (expById.get(b.expenseId)?.date ?? '').localeCompare(expById.get(a.expenseId)?.date ?? ''));
   const billItems = cardBillLines(data, card.id, month, today);
   const cardBills = data.bills.filter((b) => b.cardId === card.id && !b.archivedAt).sort((a, b) => a.name.localeCompare(b.name));
-  const linkable = data.bills.filter((b) => !b.cardId && !b.archivedAt);
   const openMonth = currentInvoiceMonth(data, card, today);
 
   // Próximas faturas: parcelas + contas fixas do cartão (previsão).
@@ -222,6 +219,37 @@ function CreditDetail({ card }: { card: CardT }) {
       confirmText: 'Confirmar pagamento',
     });
     if (ok) await payInvoice(card.id, month, total, today);
+  }
+
+  async function convertOne(billId: string) {
+    const b = cardBills.find((x) => x.id === billId);
+    if (!b) return;
+    const ok = await confirm({
+      title: `Converter ${b.name} em gasto?`,
+      message: 'Vira uma compra no cartão (gasto variável) com as parcelas restantes nas mesmas faturas. Sai da lista de contas fixas; meses já pagos ficam no histórico.',
+      confirmText: 'Converter',
+    });
+    if (!ok) return;
+    setConverting(billId);
+    try {
+      await convertBillToExpense(billId);
+    } finally {
+      setConverting(null);
+    }
+  }
+  async function convertAll() {
+    const ok = await confirm({
+      title: `Converter ${cardBills.length} contas em gastos?`,
+      message: 'Todas viram compras no cartão (gastos variáveis), com as parcelas restantes nas mesmas faturas. Meses já pagos ficam no histórico.',
+      confirmText: 'Converter todas',
+    });
+    if (!ok) return;
+    setConverting('all');
+    try {
+      for (const b of cardBills) if (billEndMonth(b)) await convertBillToExpense(b.id);
+    } finally {
+      setConverting(null);
+    }
   }
 
   const tone = u.usedPct > 90 ? 'red' : u.usedPct > 70 ? 'amber' : 'blue';
@@ -281,7 +309,17 @@ function CreditDetail({ card }: { card: CardT }) {
 
       {/* ── Fatura ── */}
       <section>
-        <SectionTitle>Fatura</SectionTitle>
+        <SectionTitle
+          action={
+            !card.deletedAt && (
+              <Button size="sm" variant="ghost" icon={Plus} onClick={() => openExpense(null, card.id)}>
+                Novo gasto
+              </Button>
+            )
+          }
+        >
+          Fatura
+        </SectionTitle>
         <Card>
           <div className="flex items-center justify-between p-2">
             <IconButton icon={ChevronLeft} label="Fatura anterior" onClick={() => setMonth(addMonths(month, -1))} />
@@ -379,83 +417,50 @@ function CreditDetail({ card }: { card: CardT }) {
         </Card>
       </section>
 
-      {/* ── Contas neste cartão ── */}
-      <section>
-        <SectionTitle
-          action={
-            <div className="flex gap-1">
-              {linkable.length > 0 && (
-                <Button size="sm" variant="ghost" icon={Link2} onClick={() => setLinkOpen(true)}>
-                  Vincular
-                </Button>
-              )}
-              <Button size="sm" variant="ghost" icon={Plus} onClick={() => setNewBill(true)}>
-                Nova
-              </Button>
-            </div>
-          }
-        >
-          Contas neste cartão · {cardBills.length}
-        </SectionTitle>
-        <Card>
-          {cardBills.length === 0 ? (
-            <EmptyState
-              icon={CalendarClock}
-              title="Nenhuma conta cobrada neste cartão"
-              text="Assinaturas e contas fixas cobradas no cartão entram na fatura e ocupam o limite — sem contar duas vezes no orçamento."
-              action={
-                <div className="flex flex-wrap justify-center gap-2">
-                  <Button onClick={() => setNewBill(true)} icon={Plus}>
-                    Nova conta
-                  </Button>
-                  {linkable.length > 0 && (
-                    <Button variant="secondary" onClick={() => setLinkOpen(true)} icon={Link2}>
-                      Vincular existente
-                    </Button>
-                  )}
-                </div>
-              }
-            />
-          ) : (
-            cardBills.map((b, i) => {
+      {/* ── Contas antigas vinculadas ao cartão: converter em gasto variável ── */}
+      {cardBills.length > 0 && (
+        <section>
+          <SectionTitle>Contas fixas no cartão · {cardBills.length}</SectionTitle>
+          <div className="mb-3 flex items-start gap-2.5 rounded-2xl bg-amber-50 p-3.5 text-[13px] leading-relaxed text-amber-900 dark:bg-amber-500/10 dark:text-amber-200">
+            <Info size={16} className="mt-0.5 shrink-0" />
+            <span>
+              O que passa no cartão é <b>gasto variável</b>, não conta fixa. Converta estas contas: as parcelas restantes continuam nas mesmas faturas e os meses já pagos ficam no histórico.
+            </span>
+          </div>
+          {cardBills.length > 1 && (
+            <Button icon={Shuffle} className="mb-3 w-full" loading={converting === 'all'} onClick={convertAll}>
+              Converter todas ({cardBills.length})
+            </Button>
+          )}
+          <Card>
+            {cardBills.map((b, i) => {
               const c = catById.get(b.categoryId);
               const v = billVersionAt(data.billVersions, b.id, openMonth);
               const end = billEndMonth(b);
               return (
-                <div key={b.id} className={cx('flex items-center', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
+                <div key={b.id} className={cx('md:flex md:items-center', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
                   <ListRow
-                    className="flex-1"
+                    className="min-w-0 flex-1"
                     onClick={() => nav(`/contas/${b.id}`)}
                     left={<WithOwner who={b.responsible}>{c ? <CategoryIcon icon={c.icon} color={c.color} size={38} /> : <span className="h-[38px] w-[38px]" />}</WithOwner>}
                     title={b.name}
                     subtitle={
                       <>
-                        <PersonTag who={b.responsible} /> · {end ? `até ${monthLabel(end, { short: true })}` : 'mensal, sem data final'}
+                        <PersonTag who={b.responsible} /> · {brl(v?.amountCents ?? 0)} · {end ? `até ${monthLabel(end, { short: true })}` : 'sem término'}
                       </>
                     }
-                    right={<Money cents={v?.amountCents ?? 0} className="text-[15px] font-semibold text-slate-900 dark:text-white" />}
                   />
-                  <IconButton
-                    icon={Unlink}
-                    label={`Desvincular ${b.name} deste cartão`}
-                    className="mr-2 shrink-0 text-slate-400 hover:text-expense"
-                    onClick={async () => {
-                      if (
-                        await confirm({
-                          title: `Desvincular ${b.name}?`,
-                          message: 'A conta continua cadastrada, mas passa a sair do dinheiro (boleto, Pix ou débito) e deixa de ocupar o limite deste cartão.',
-                          confirmText: 'Desvincular',
-                        })
-                      )
-                        await setBillsCard([b.id], null);
-                    }}
-                  />
+                  <div className="px-4 pb-3.5 md:shrink-0 md:pb-0 md:pl-0 md:pr-5">
+                  <Button size="sm" variant="secondary" icon={Shuffle} className="w-full md:w-auto" loading={converting === b.id} disabled={!end} onClick={() => convertOne(b.id)}>
+                    {end ? 'Converter em gasto' : 'Defina o término'}
+                  </Button>
+                  </div>
                 </div>
               );
-            })
-          )}
-        </Card>
-      </section>
+            })}
+          </Card>
+        </section>
+      )}
 
       {/* ── Próximas faturas ── */}
       <section>
@@ -481,8 +486,6 @@ function CreditDetail({ card }: { card: CardT }) {
       </section>
 
       <LimitSheet card={card} mode={limitSheet} onClose={() => setLimitSheet(null)} usage={u} />
-      <LinkBillsSheet card={card} open={linkOpen} onClose={() => setLinkOpen(false)} />
-      <BillForm open={newBill} onClose={() => setNewBill(false)} presetCardId={card.id} />
     </div>
   );
 }
@@ -556,68 +559,6 @@ function LimitSheet({ card, mode, onClose, usage }: { card: CardT; mode: 'total'
             {tooHigh && <p className="text-[13px] text-expense">O disponível não pode ser maior que o limite total ({brl(card.limitCents)}).</p>}
           </>
         )}
-      </div>
-    </Sheet>
-  );
-}
-
-function LinkBillsSheet({ card, open, onClose }: { card: CardT; open: boolean; onClose: () => void }) {
-  const data = useStore((s) => s.data);
-  const setBillsCard = useStore((s) => s.setBillsCard);
-  const [sel, setSel] = useResetOnOpen<string[]>(open, () => []);
-  const [q, setQ] = useResetOnOpen(open, () => '');
-  const catById = new Map(data.categories.map((c) => [c.id, c]));
-  const term = q.trim().toLowerCase();
-  const list = data.bills
-    .filter((b) => !b.cardId && !b.archivedAt)
-    .filter((b) => !term || b.name.toLowerCase().includes(term))
-    .sort((a, b) => a.name.localeCompare(b.name));
-  return (
-    <Sheet
-      open={open}
-      onClose={onClose}
-      title="Vincular contas ao cartão"
-      subtitle={`Contas que são cobradas no ${card.name}`}
-      footer={
-        <Button size="lg" className="w-full" disabled={!sel.length} onClick={() => void setBillsCard(sel, card.id).then(onClose)}>
-          {sel.length ? `Vincular ${sel.length} conta(s)` : 'Selecione as contas'}
-        </Button>
-      }
-    >
-      <div className="relative mb-3">
-        <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400" />
-        <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conta" className="pl-11" aria-label="Buscar conta" />
-      </div>
-      <div className="overflow-hidden rounded-2xl ring-1 ring-slate-100 dark:ring-ink-700">
-        {list.length === 0 && <p className="p-4 text-center text-sm text-slate-500">Nenhuma conta disponível.</p>}
-        {list.map((b, i) => {
-          const c = catById.get(b.categoryId);
-          const on = sel.includes(b.id);
-          const v = billVersionAt(data.billVersions, b.id, b.startMonth);
-          return (
-            <ListRow
-              key={b.id}
-              className={cx(i > 0 && 'border-t border-slate-100 dark:border-ink-700', on && 'bg-brand-50/70 dark:bg-brand-500/10')}
-              onClick={() => setSel(on ? sel.filter((x) => x !== b.id) : [...sel, b.id])}
-              left={
-                <span
-                  className={cx('flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border-2 transition', on ? 'border-brand-500 bg-brand-500 text-white' : 'border-slate-300 dark:border-ink-600')}
-                  aria-hidden
-                >
-                  {on && <Check size={15} strokeWidth={3} />}
-                </span>
-              }
-              title={
-                <span className="inline-flex items-center gap-2">
-                  {c && <CategoryIcon icon={c.icon} color={c.color} size={26} />}
-                  {b.name}
-                </span>
-              }
-              subtitle={<PersonTag who={b.responsible} />}
-              right={<Money cents={v?.amountCents ?? 0} className="text-[14px] font-semibold text-slate-900 dark:text-white" />}
-            />
-          );
-        })}
       </div>
     </Sheet>
   );

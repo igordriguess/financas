@@ -53,7 +53,7 @@ export const invoiceDueDate = (card: Pick<Card, 'dueDay'>, invoiceMonth: Month) 
 
 export function buildInstallments(expense: Expense, card: Card): Installment[] {
   const total = Math.max(1, expense.installments);
-  const first = invoiceMonthFor(card, expense.date);
+  const first = expense.firstInvoiceMonth ?? invoiceMonthFor(card, expense.date);
   return splitCents(expense.amountCents, total).map((amountCents, i) => ({
     id: uid(),
     createdAt: nowISO(),
@@ -512,12 +512,13 @@ export function categoryUsage(d: FinanceData, categoryId: string) {
   };
 }
 
-export function validateExpense(e: Pick<Expense, 'amountCents' | 'date' | 'method' | 'cardId' | 'installments' | 'categoryId'>): string | null {
+export function validateExpense(e: Pick<Expense, 'amountCents' | 'date' | 'method' | 'cardId' | 'installments' | 'categoryId'> & { firstInvoiceMonth?: Month | null }): string | null {
   if (!Number.isInteger(e.amountCents) || e.amountCents <= 0) return 'Informe um valor maior que zero.';
   if (e.amountCents > 100_000_000_00) return 'Valor muito alto. Confira o lançamento.';
   if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return 'Data inválida.';
   if (!e.categoryId) return 'Escolha uma categoria.';
   if ((e.method === 'credit' || e.method === 'benefit') && !e.cardId) return 'Selecione o cartão utilizado.';
   if (e.method === 'credit' && (e.installments < 1 || e.installments > 48)) return 'Parcelas devem estar entre 1 e 48.';
+  if (e.method === 'credit' && e.firstInvoiceMonth && e.firstInvoiceMonth < monthOf(e.date)) return 'A 1ª parcela não pode cair numa fatura anterior ao mês da compra.';
   return null;
 }

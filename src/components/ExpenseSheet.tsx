@@ -1,13 +1,12 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banknote, CreditCard, Gift, Landmark, Lock, QrCode, Trash2, TriangleAlert } from 'lucide-react';
+import { Banknote, ChevronLeft, ChevronRight, CreditCard, Gift, Landmark, Lock, QrCode, Trash2, TriangleAlert } from 'lucide-react';
 import { readExpenseDraft, useStore, writeExpenseDraft } from '../store/useStore';
 import { benefitBalance, creditUsage, expenseLocked, invoiceDueDate, invoiceMonthFor } from '../domain/finance';
 import { PAYMENT_LABEL, PERSON_LABEL, RESPONSIBLES, type PaymentMethod, type Responsible } from '../domain/types';
 import { brl, splitCents } from '../lib/money';
-import { fmtDate, monthLabel, todayISO } from '../lib/months';
-import { Badge, Button, Field, Input, MoneyInput, Segmented, Sheet, cx, useResetOnOpen } from './ui';
+import { addMonths, fmtDate, monthLabel, monthOf, todayISO } from '../lib/months';
+import { Badge, Button, Field, IconButton, Input, MoneyInput, Segmented, Sheet, cx, useResetOnOpen } from './ui';
 import { CategoryIcon } from './icons';
-import { HScroll } from './interaction';
 import { PersonGlyph } from './people';
 
 const METHOD_ICON: Record<PaymentMethod, typeof QrCode> = { pix: QrCode, credit: CreditCard, debit: Landmark, cash: Banknote, benefit: Gift };
@@ -23,10 +22,12 @@ interface Form {
   method: PaymentMethod;
   cardId: string | null;
   installments: number;
+  /** null = automático (data da compra + fechamento do cartão). */
+  firstInvoiceMonth: string | null;
 }
 
 export function ExpenseSheet() {
-  const { open, editId } = useStore((s) => s.expenseSheet);
+  const { open, editId, presetCardId } = useStore((s) => s.expenseSheet);
   const close = useStore((s) => s.closeExpense);
   const data = useStore((s) => s.data);
   const me = useStore((s) => s.me);
@@ -56,6 +57,7 @@ export function ExpenseSheet() {
         method: editing.method,
         cardId: editing.cardId,
         installments: editing.installments,
+        firstInvoiceMonth: editing.firstInvoiceMonth ?? null,
       };
     let method: PaymentMethod = 'pix';
     try {
@@ -64,7 +66,10 @@ export function ExpenseSheet() {
     } catch {
       /* ignore */
     }
-    return { amountCents: 0, description: '', categoryId: '', responsible: me.person, date: todayISO(), method, cardId: null, installments: 1 };
+    // Aberto pela tela do cartão: já vem em crédito nesse cartão.
+    const preset = presetCardId ? data.cards.find((c) => c.id === presetCardId && c.kind === 'credit') : null;
+    if (preset) return { amountCents: 0, description: '', categoryId: '', responsible: me.person, date: todayISO(), method: 'credit', cardId: preset.id, installments: 1, firstInvoiceMonth: null };
+    return { amountCents: 0, description: '', categoryId: '', responsible: me.person, date: todayISO(), method, cardId: null, installments: 1, firstInvoiceMonth: null };
   });
 
   // Guarda o rascunho enquanto o formulário está aberto.
@@ -83,17 +88,18 @@ export function ExpenseSheet() {
       let cardId: string | null = null;
       if (m === 'credit') cardId = creditCards.find((c) => c.id === p.cardId)?.id ?? (creditCards.length === 1 ? creditCards[0].id : null);
       if (m === 'benefit') cardId = benefitCards.find((c) => c.id === p.cardId)?.id ?? benefitCards.find((c) => c.owner === p.responsible)?.id ?? null;
-      return { ...p, method: m, cardId, installments: m === 'credit' ? p.installments : 1 };
+      return { ...p, method: m, cardId, installments: m === 'credit' ? p.installments : 1, firstInvoiceMonth: null };
     });
   };
 
   const card = f.cardId ? data.cards.find((c) => c.id === f.cardId) ?? null : null;
   const creditInfo = f.method === 'credit' && card?.kind === 'credit' && f.date ? (() => {
-    const first = invoiceMonthFor(card, f.date);
+    const auto = invoiceMonthFor(card, f.date);
+    const first = f.firstInvoiceMonth ?? auto;
     const parts = splitCents(f.amountCents, f.installments);
     const usage = creditUsage(data, card);
     const already = editing && editing.cardId === card.id ? editing.amountCents : 0;
-    return { first, due: invoiceDueDate(card, first), parts, available: usage.available + already };
+    return { first, auto, due: invoiceDueDate(card, first), parts, available: usage.available + already };
   })() : null;
   const benefitInfo = f.method === 'benefit' && card?.kind === 'benefit' ? benefitBalance(data, card.id) + (editing?.cardId === card.id ? editing.amountCents : 0) : null;
 
@@ -214,7 +220,7 @@ export function ExpenseSheet() {
 
         {/* 5. Data */}
         <Field label="Data da compra">
-          <Input type="date" value={f.date} max="2100-12-31" onChange={(e) => set('date', e.target.value)} disabled={lockedFinancial} />
+          <Input type="date" value={f.date} max="2100-12-31" onChange={(e) => setF((p) => ({ ...p, date: e.target.value, firstInvoiceMonth: null }))} disabled={lockedFinancial} />
         </Field>
 
         {/* 6. Forma de pagamento */}
@@ -249,26 +255,26 @@ export function ExpenseSheet() {
         {(f.method === 'credit' || f.method === 'benefit') && (
           <div className={cx('animate-pop-in', lockedFinancial && 'pointer-events-none opacity-60')}>
             <span className="mb-2 block text-[13px] font-medium text-slate-600 dark:text-slate-300">{f.method === 'credit' ? 'Cartão de crédito' : 'Cartão de benefício'}</span>
-            <HScroll className="-mx-5" innerClassName="gap-2 px-5 pb-1" ariaLabel="Cartões">
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Cartões">
               {(f.method === 'credit' ? creditCards : benefitCards).map((c) => (
                 <button
                   key={c.id}
                   type="button"
-                  onClick={() => set('cardId', c.id)}
+                  onClick={() => setF((p) => ({ ...p, cardId: c.id, firstInvoiceMonth: null }))}
                   aria-pressed={f.cardId === c.id}
                   data-tip={c.kind === 'credit' ? `${c.name} · limite disponível ${brl(creditUsage(data, c).available)} · fecha dia ${c.closingDay}` : `${c.name} · saldo ${brl(benefitBalance(data, c.id))}`}
                   className={cx(
-                    'flex h-12 shrink-0 items-center gap-2 rounded-2xl px-3.5 text-sm font-semibold transition active:scale-95',
+                    'flex min-h-12 min-w-0 items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm font-semibold leading-tight transition active:scale-95',
                     f.cardId === c.id ? 'text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-ink-700',
                   )}
                   style={f.cardId === c.id ? { background: c.color } : undefined}
                 >
-                  <span className="h-3 w-3 rounded-full ring-2 ring-white/70" style={{ background: c.color }} />
+                  <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/70" style={{ background: c.color }} />
                   {c.name}
                 </button>
               ))}
               {(f.method === 'credit' ? creditCards : benefitCards).length === 0 && <p className="text-sm text-slate-500">Nenhum cartão ativo. Cadastre em Cartões.</p>}
-            </HScroll>
+            </div>
             {benefitInfo !== null && (
               <p className={cx('mt-2 text-xs', benefitInfo - f.amountCents < 0 ? 'font-semibold text-expense' : 'text-slate-500')}>
                 Saldo disponível: {brl(benefitInfo)}
@@ -283,7 +289,7 @@ export function ExpenseSheet() {
         {f.method === 'credit' && (
           <div className={cx('animate-pop-in', lockedFinancial && 'pointer-events-none opacity-60')}>
             <span className="mb-2 block text-[13px] font-medium text-slate-600 dark:text-slate-300">Parcelas</span>
-            <HScroll className="-mx-5" innerClassName="gap-1.5 px-5 pb-1" ariaLabel="Parcelas">
+            <div className="grid grid-cols-6 gap-1.5" role="group" aria-label="Parcelas">
               {Array.from({ length: 12 }, (_, i) => i + 1).map((n) => (
                 <button
                   key={n}
@@ -292,7 +298,7 @@ export function ExpenseSheet() {
                   aria-pressed={f.installments === n}
                   data-tip={f.amountCents > 0 ? (n === 1 ? `À vista: ${brl(f.amountCents)}` : `${n}x de ${brl(Math.floor(f.amountCents / n))}`) : undefined}
                   className={cx(
-                    'h-10 min-w-[48px] shrink-0 rounded-xl text-sm font-semibold transition active:scale-95',
+                    'h-10 min-w-0 rounded-xl px-0.5 text-[13px] font-semibold transition active:scale-95',
                     f.installments === n ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-ink-900 dark:text-slate-300',
                   )}
                 >
@@ -305,17 +311,38 @@ export function ExpenseSheet() {
                 min={1}
                 max={48}
                 aria-label="Outra quantidade de parcelas"
-                placeholder="Outra"
+                placeholder="Outra quantidade (até 48x)"
                 value={f.installments > 12 ? f.installments : ''}
                 onChange={(e) => set('installments', Math.min(48, Math.max(1, Number(e.target.value) || 1)))}
-                className="h-10 w-20 shrink-0 rounded-xl bg-slate-100 px-2 text-center text-sm font-semibold outline-none dark:bg-ink-900"
+                className="col-span-6 h-10 rounded-xl bg-slate-100 px-3 text-center text-sm font-semibold outline-none placeholder:text-slate-400 dark:bg-ink-900"
               />
-            </HScroll>
+            </div>
             {creditInfo && (
               <div className="mt-3 space-y-1 rounded-2xl bg-brand-50 p-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
-                <p>
-                  1ª parcela na fatura de <b>{monthLabel(creditInfo.first)}</b> (vence {fmtDate(creditInfo.due)})
-                </p>
+                <div className="flex items-center justify-between gap-2">
+                  <p>
+                    1ª parcela na fatura de <b>{monthLabel(creditInfo.first)}</b>
+                    <span className="block text-[12px] opacity-80">
+                      vence {fmtDate(creditInfo.due)}
+                      {creditInfo.first !== creditInfo.auto ? ' · escolhida manualmente' : ''}
+                    </span>
+                  </p>
+                  <div className="flex shrink-0 gap-1">
+                    <IconButton
+                      icon={ChevronLeft}
+                      label="Fatura anterior"
+                      disabled={creditInfo.first <= monthOf(f.date)}
+                      onClick={() => set('firstInvoiceMonth', addMonths(creditInfo.first, -1) === creditInfo.auto ? null : addMonths(creditInfo.first, -1))}
+                      className="h-9 w-9 bg-white/70 disabled:opacity-30 dark:bg-ink-800"
+                    />
+                    <IconButton
+                      icon={ChevronRight}
+                      label="Próxima fatura"
+                      onClick={() => set('firstInvoiceMonth', addMonths(creditInfo.first, 1) === creditInfo.auto ? null : addMonths(creditInfo.first, 1))}
+                      className="h-9 w-9 bg-white/70 dark:bg-ink-800"
+                    />
+                  </div>
+                </div>
                 <p>
                   Limite disponível: <b>{brl(creditInfo.available)}</b>
                   {f.amountCents > creditInfo.available && (

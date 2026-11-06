@@ -23,6 +23,7 @@ salvos apenas no navegador. Serve para avaliar a interface, não para uso real.
    - `20261106010000_casal_parcela_atual.sql` — responsável "Casal" e contas já em andamento (parcela atual).
    - `20261106020000_cartao_contas_limite.sql` — contas cobradas no cartão e ajuste do limite disponível.
    - `20261106030000_producao.sql` — segurança de perfis, pagamento via fatura e valor pago congelado.
+   - `20261106040000_fatura_primeira_parcela.sql` — compra no cartão com a fatura da 1ª parcela escolhida.
 
    Opcional: `supabase/seed/2026-11_contas_iniciais.sql` cadastra as contas fixas iniciais do casal.
 3. Em **Project Settings → API**, copie a URL e a `anon key` e crie um `.env` a partir de `.env.example`:
