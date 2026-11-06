@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, CalendarClock, Check, CreditCard, Gift, Info, Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, CalendarClock, Check, CreditCard, Gift, Info, PiggyBank, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { benefitBalance, billLines, creditUsage, forecast, futureInstallments, monthSummary } from '../domain/finance';
+import { benefitBalance, billLines, creditUsage, forecast, futureInstallments, monthSummary, reserveBalance } from '../domain/finance';
 import { PAYMENT_LABEL, PERSON_LABEL } from '../domain/types';
 import { brl } from '../lib/money';
 import { useGreeting } from '../lib/greeting';
@@ -29,6 +29,7 @@ export function DashboardPage() {
   const creditAvailable = credits.reduce((a, c) => a + Math.max(0, c.available), 0);
   const creditLimit = credits.reduce((a, c) => a + c.limit, 0);
   const benefitTotal = benefits.reduce((a, b) => a + b.balance, 0);
+  const reserve = reserveBalance(data);
   const recent = useMemo(() => [...data.expenses].sort((a, b) => (a.date === b.date ? b.createdAt.localeCompare(a.createdAt) : b.date.localeCompare(a.date))).slice(0, 6), [data.expenses]);
   const catById = useMemo(() => new Map(data.categories.map((c) => [c.id, c])), [data.categories]);
   const cardById = useMemo(() => new Map(data.cards.map((c) => [c.id, c])), [data.cards]);
@@ -53,7 +54,7 @@ export function DashboardPage() {
             {s.incomeHasProjection && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">receita prevista</span>}
           </div>
           <p className={cx('mt-1 text-[34px] font-bold tracking-tight tabular-nums', s.balance < 0 && 'text-red-200')}>{brl(s.balance)}</p>
-          <p className="text-[13px] text-white/75">Receitas − contas fixas − gastos à vista − faturas do mês</p>
+          <p className="text-[13px] text-white/75">Receitas − contas fixas − gastos à vista − faturas do mês{s.reserveIn || s.reserveOut ? ' ± reserva' : ''}</p>
           <div className="mt-4">
             <div className="mb-1.5 flex justify-between text-[12px] font-medium text-white/85">
               <span>Renda comprometida</span>
@@ -101,6 +102,18 @@ export function DashboardPage() {
           <Money cents={s.balance} tone="auto" className="mt-2 block text-2xl font-bold" />
           <p className="mt-1 text-[12px] text-slate-500">Considera todas as contas fixas do mês, pagas ou não.</p>
         </Card>
+        <Card className="p-5" onClick={() => nav('/reserva')}>
+          <Tile icon={PiggyBank} color="text-emerald-600 bg-emerald-50 dark:bg-emerald-500/15" label="Reserva" />
+          <Money cents={reserve} tone="auto" className="mt-2 block text-2xl font-bold" />
+          {s.reserveIn > 0 || s.reserveOut > 0 ? (
+            <div className="mt-2 space-y-1.5 text-[13px]">
+              {s.reserveIn > 0 && <Row label={`Guardado do saldo em ${monthLabel(month)}`} value={s.reserveIn} />}
+              {s.reserveOut > 0 && <Row label={`Devolvido ao saldo em ${monthLabel(month)}`} value={s.reserveOut} />}
+            </div>
+          ) : (
+            <p className="mt-1 text-[12px] text-slate-500">Dinheiro guardado — não entra no disponível do mês.</p>
+          )}
+        </Card>
         <Card className="p-4" onClick={() => nav('/cartoes?tab=benefit')}>
           <Tile icon={Gift} color="text-orange-600 bg-orange-50 dark:bg-orange-500/15" label="Benefícios" />
           <p className="mt-2 text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{brl(benefitTotal)}</p>
@@ -127,8 +140,8 @@ export function DashboardPage() {
         <Card className="p-5">
           <Tile icon={CalendarClock} color="text-expense bg-expense-soft dark:bg-red-500/15" label="Já comprometido" />
           <div className="mt-2 space-y-1.5 text-[13px]">
-            <Row label="Contas pendentes do mês" value={s.fixedPending} />
-            <Row label="Parcelas em faturas futuras" value={future} />
+            <Row label="Contas pendentes do mês" value={s.fixedPending} out />
+            <Row label="Parcelas em faturas futuras" value={future} out />
           </div>
         </Card>
       </div>
@@ -197,9 +210,9 @@ export function DashboardPage() {
           </span>
         </div>
         <div className="mt-3 grid grid-cols-3 gap-2 text-[12px]">
-          <Mini label="Receitas" value={next.income} />
-          <Mini label="Contas" value={next.fixed} />
-          <Mini label="Cartões" value={next.installments} />
+          <Mini label="Receitas" value={next.income} tone="in" />
+          <Mini label="Contas" value={next.fixed} tone="out" />
+          <Mini label="Cartões" value={next.installments} tone="out" />
         </div>
       </Card>
 
@@ -240,11 +253,11 @@ function Tile({ icon: Icon, color, label }: { icon: typeof Wallet; color: string
     </div>
   );
 }
-function Row({ label, value }: { label: string; value: number }) {
+function Row({ label, value, out }: { label: string; value: number; out?: boolean }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between gap-3">
       <span className="text-slate-600 dark:text-slate-300">{label}</span>
-      <span className="font-semibold tabular-nums text-slate-900 dark:text-white">{brl(value)}</span>
+      <span className={cx('whitespace-nowrap font-semibold tabular-nums', out ? 'text-expense dark:text-expense-dark' : 'text-slate-900 dark:text-white')}>{brl(value)}</span>
     </div>
   );
 }
@@ -252,15 +265,15 @@ function Breakdown({ label, value, to }: { label: string; value: number; to: str
   return (
     <Link to={to} className="rounded-xl p-1 press:bg-slate-50 dark:press:bg-ink-700">
       <span className="block text-slate-500">{label}</span>
-      <span className="block font-semibold tabular-nums text-slate-800 dark:text-slate-100">{brl(value)}</span>
+      <span className="block font-semibold tabular-nums text-expense dark:text-expense-dark">{brl(value)}</span>
     </Link>
   );
 }
-function Mini({ label, value }: { label: string; value: number }) {
+function Mini({ label, value, tone }: { label: string; value: number; tone?: 'in' | 'out' }) {
   return (
     <div className="rounded-xl bg-slate-50 p-2 dark:bg-ink-900">
       <span className="block text-slate-500">{label}</span>
-      <span className="block font-semibold tabular-nums text-slate-800 dark:text-slate-100">{brl(value)}</span>
+      <span className={cx('block font-semibold tabular-nums', tone === 'out' ? 'text-expense dark:text-expense-dark' : tone === 'in' ? 'text-income' : 'text-slate-800 dark:text-slate-100')}>{brl(value)}</span>
     </div>
   );
 }

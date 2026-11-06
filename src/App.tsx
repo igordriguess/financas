@@ -12,6 +12,7 @@ import { CardDetailPage, CardsPage } from './pages/Cards';
 import { BillDetailPage, BillsPage } from './pages/Bills';
 import { MorePage } from './pages/More';
 import { IncomesPage } from './pages/Incomes';
+import { ReservePage } from './pages/Reserve';
 import { CategoriesPage } from './pages/Categories';
 const ReportsPage = lazy(() => import('./pages/Reports').then((m) => ({ default: m.ReportsPage })));
 import { ForecastPage } from './pages/Forecast';
@@ -64,6 +65,7 @@ export default function App() {
           <Route path="contas/:id" element={<BillDetailPage />} />
           <Route path="mais" element={<MorePage />} />
           <Route path="receitas" element={<IncomesPage />} />
+          <Route path="reserva" element={<ReservePage />} />
           <Route path="categorias" element={<CategoriesPage />} />
           <Route path="relatorios" element={<Suspense fallback={<p className="py-10 text-center text-sm text-slate-500">Carregando relatórios…</p>}><ReportsPage /></Suspense>} />
           <Route path="proximo-mes" element={<ForecastPage />} />

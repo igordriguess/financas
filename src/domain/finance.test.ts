@@ -18,6 +18,7 @@ import {
   invoiceMonthFor,
   materializeIncomes,
   monthSummary,
+  reserveBalance,
 } from './finance';
 import { emptyData, type Bill, type Card, type Expense, type FinanceData } from './types';
 
@@ -325,3 +326,19 @@ describe('fatura da 1ª parcela escolhida', () => {
   });
 });
 
+
+describe('reserva', () => {
+  const entry = (amountCents: number, source: 'balance' | 'other', date = '2026-11-06') => ({ id: `r${amountCents}${source}`, createdAt: '', date, amountCents, source, note: '' });
+  it('saldo da reserva soma entradas e saídas', () => {
+    const d: FinanceData = { ...emptyData(), reserveEntries: [entry(641200, 'other'), entry(50000, 'balance'), entry(-20000, 'other')] };
+    expect(reserveBalance(d)).toBe(671200);
+  });
+  it('só movimentos do saldo do mês mexem no saldo do mês', () => {
+    const d: FinanceData = { ...emptyData(), reserveEntries: [entry(641200, 'other'), entry(50000, 'balance'), entry(-10000, 'balance'), entry(30000, 'balance', '2026-10-05')] };
+    const s = monthSummary(d, '2026-11', '2026-11-06');
+    expect(s.reserveIn).toBe(50000);
+    expect(s.reserveOut).toBe(10000);
+    expect(s.outflows).toBe(0);
+    expect(s.balance).toBe(-40000);
+  });
+});

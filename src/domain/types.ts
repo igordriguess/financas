@@ -168,6 +168,18 @@ export interface BillOccurrence extends Base {
   paidViaInvoice: boolean;
 }
 
+/**
+ * Movimento da Reserva (dinheiro guardado). Positivo = guardou; negativo = retirou.
+ * source 'balance': saiu do (ou voltou para o) saldo do mês; 'other': veio de/foi para outra fonte.
+ */
+export type ReserveSource = 'balance' | 'other';
+export interface ReserveEntry extends Base {
+  date: string;
+  amountCents: number;
+  source: ReserveSource;
+  note: string;
+}
+
 export interface FinanceData {
   categories: Category[];
   cards: Card[];
@@ -180,6 +192,7 @@ export interface FinanceData {
   bills: Bill[];
   billVersions: BillVersion[];
   billOccurrences: BillOccurrence[];
+  reserveEntries: ReserveEntry[];
 }
 
 export type TableName = keyof FinanceData;
@@ -195,6 +208,7 @@ export const TABLES: TableName[] = [
   'bills',
   'billVersions',
   'billOccurrences',
+  'reserveEntries',
 ];
 
 export const emptyData = (): FinanceData => ({
@@ -209,4 +223,5 @@ export const emptyData = (): FinanceData => ({
   bills: [],
   billVersions: [],
   billOccurrences: [],
+  reserveEntries: [],
 });

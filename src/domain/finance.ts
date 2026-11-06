@@ -121,6 +121,10 @@ export interface CreditUsage {
   usedPct: number;
   /** Parcelas de compras lançadas no app (faturas não pagas, inclusive futuras). */
   purchases: number;
+  /** Parte de `purchases` que vem de compras à vista (1x). */
+  purchasesSingle: number;
+  /** Parte de `purchases` que vem de compras parceladas: todas as parcelas restantes não pagas. */
+  purchasesInstallments: number;
   /** Contas recorrentes (sem término) cobradas no cartão até a fatura aberta e não pagas. */
   bills: number;
   /** Contas parceladas (com término) no cartão: todas as parcelas restantes ainda não pagas. */
@@ -136,7 +140,9 @@ export interface CreditUsage {
  */
 export function creditUsage(d: FinanceData, card: Card, today = todayISO()): CreditUsage {
   const paid = new Set(d.invoicePayments.filter((p) => p.cardId === card.id).map((p) => p.month));
-  const purchases = sum(d.installments.filter((i) => i.cardId === card.id && !paid.has(i.invoiceMonth)).map((i) => i.amountCents));
+  const pending = d.installments.filter((i) => i.cardId === card.id && !paid.has(i.invoiceMonth));
+  const purchases = sum(pending.map((i) => i.amountCents));
+  const purchasesInstallments = sum(pending.filter((i) => i.total > 1).map((i) => i.amountCents));
   const open = invoiceMonthFor(card, today);
   let bills = 0;
   let billsReleased = 0;
@@ -163,6 +169,8 @@ export function creditUsage(d: FinanceData, card: Card, today = todayISO()): Cre
     available: card.limitCents - used,
     usedPct: card.limitCents > 0 ? Math.round((used / card.limitCents) * 100) : 0,
     purchases,
+    purchasesSingle: purchases - purchasesInstallments,
+    purchasesInstallments,
     bills,
     billsInstallments,
     external,
@@ -333,6 +341,11 @@ export interface MonthSummary {
   benefitSpent: number;
   /** Tudo que sai do dinheiro no mês: contas fixas + à vista + faturas. */
   outflows: number;
+  /** Guardado na reserva a partir do saldo do mês (não é despesa, mas sai do dinheiro). */
+  reserveIn: number;
+  /** Retirado da reserva para o saldo do mês. */
+  reserveOut: number;
+  /** Receitas − saídas − guardado na reserva + retirado da reserva. */
   balance: number;
   committedPct: number;
 }
@@ -351,6 +364,9 @@ export function monthSummary(d: FinanceData, m: Month, today = todayISO()): Mont
   const benefitSpent = sum(monthExp.filter((e) => e.method === 'benefit').map((e) => e.amountCents));
   const creditInvoices = sum(d.installments.filter((i) => i.invoiceMonth === m).map((i) => i.amountCents)) + sum(cardBills.map((b) => b.amountCents));
   const outflows = fixed + cashSpent + creditInvoices;
+  const reserve = d.reserveEntries.filter((r) => r.source === 'balance' && monthOf(r.date) === m);
+  const reserveIn = sum(reserve.filter((r) => r.amountCents > 0).map((r) => r.amountCents));
+  const reserveOut = -sum(reserve.filter((r) => r.amountCents < 0).map((r) => r.amountCents));
   return {
     month: m,
     income,
@@ -364,7 +380,9 @@ export function monthSummary(d: FinanceData, m: Month, today = todayISO()): Mont
     creditInvoices,
     benefitSpent,
     outflows,
-    balance: income - outflows,
+    reserveIn,
+    reserveOut,
+    balance: income - outflows - reserveIn + reserveOut,
     committedPct: income > 0 ? Math.round((outflows / income) * 100) : 0,
   };
 }
@@ -522,4 +540,11 @@ export function validateExpense(e: Pick<Expense, 'amountCents' | 'date' | 'metho
   if (e.method === 'credit' && (e.installments < 1 || e.installments > 48)) return 'Parcelas devem estar entre 1 e 48.';
   if (e.method === 'credit' && e.firstInvoiceMonth && e.firstInvoiceMonth < monthOf(e.date)) return 'A 1ª parcela não pode cair numa fatura anterior ao mês da compra.';
   return null;
+}
+
+/* ───────────────────────────── Reserva ───────────────────────────── */
+
+/** Saldo da reserva: soma de tudo que foi guardado menos o que foi retirado. */
+export function reserveBalance(d: FinanceData): number {
+  return sum(d.reserveEntries.map((r) => r.amountCents));
 }

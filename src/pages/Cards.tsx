@@ -282,13 +282,12 @@ function CreditDetail({ card }: { card: CardT }) {
             </p>
           </div>
           <div className="mt-5 space-y-2.5 border-t border-slate-100 pt-4 text-[14px] dark:border-ink-700">
-            <UsageRow label="Compras lançadas no app" hint="Parcelas de faturas ainda não pagas, inclusive futuras" value={u.purchases} />
+            <UsageRow label="Compras à vista" hint="Compras em 1x em faturas ainda não pagas" value={u.purchasesSingle + u.bills} />
             <UsageRow
-              label="Contas parceladas / com término"
-              hint="Todas as parcelas restantes ainda não pagas — o limite é liberado conforme cada fatura é paga"
-              value={u.billsInstallments}
+              label="Compras parceladas"
+              hint="Todas as parcelas restantes ainda não pagas, inclusive de faturas futuras — o limite é liberado conforme cada fatura é paga"
+              value={u.purchasesInstallments + u.billsInstallments}
             />
-            <UsageRow label="Contas recorrentes no cartão" hint="Assinaturas e contas sem término: cobranças até a fatura aberta e ainda não pagas" value={u.bills} />
             {u.billsReleased > 0 && (
               <p className="-mt-1 flex items-center gap-1.5 text-[12px] text-income">
                 <CheckCircle2 size={13} /> {brl(u.billsReleased)} em contas já pagas — limite liberado
@@ -501,17 +500,48 @@ function UsageRow({ label, hint, value }: { label: string; hint: string; value: 
   );
 }
 
+/** Linha de cálculo: rótulo (com explicação opcional) à esquerda, valor sempre em uma linha à direita. */
+function CalcRow({ label, hint, value, strong }: { label: string; hint?: string; value: number; strong?: boolean }) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className={cx('text-[14px]', strong ? 'font-semibold text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-300')}>{label}</p>
+        {hint && <p className="text-[12px] leading-snug text-slate-500">{hint}</p>}
+      </div>
+      <span className={cx('shrink-0 whitespace-nowrap text-[14px] tabular-nums', strong ? 'font-bold' : 'font-semibold', strong && value < 0 ? 'text-expense' : 'text-slate-900 dark:text-white')}>
+        {value < 0 ? `− ${brl(-value)}` : brl(value)}
+      </span>
+    </div>
+  );
+}
+
+function Note({ children }: { children: React.ReactNode }) {
+  return (
+    <p className="flex items-start gap-2 rounded-2xl bg-brand-50 p-3 text-[13px] leading-relaxed text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
+      <Info size={16} className="mt-0.5 shrink-0" />
+      <span>{children}</span>
+    </p>
+  );
+}
+
 function LimitSheet({ card, mode, onClose, usage }: { card: CardT; mode: 'total' | 'available' | null; onClose: () => void; usage: ReturnType<typeof creditUsage> }) {
   const saveCard = useStore((s) => s.saveCard);
   const setCardAvailable = useStore((s) => s.setCardAvailable);
+  const recalcCardAvailable = useStore((s) => s.recalcCardAvailable);
   const [v, setV] = useResetOnOpen(!!mode, () => (mode === 'total' ? card.limitCents : Math.max(0, usage.available)));
+  const [source, setSource] = useResetOnOpen<'bank' | 'app'>(!!mode, () => 'bank');
   const [busy, setBusy] = useState(false);
   const known = usage.purchases + usage.bills + usage.billsInstallments;
-  const tooHigh = mode === 'available' && v > card.limitCents;
+  // Contas fixas no cartão entram junto: recorrentes como à vista, com término como parceladas.
+  const cashSide = usage.purchasesSingle + usage.bills;
+  const installmentSide = usage.purchasesInstallments + usage.billsInstallments;
+  const fromApp = mode === 'available' && source === 'app';
+  const tooHigh = mode === 'available' && !fromApp && v > card.limitCents;
   async function save() {
     setBusy(true);
     try {
       if (mode === 'total') await saveCard({ ...card, limitCents: v });
+      else if (fromApp) await recalcCardAvailable(card.id);
       else await setCardAvailable(card.id, v);
       onClose();
     } catch {
@@ -529,34 +559,62 @@ function LimitSheet({ card, mode, onClose, usage }: { card: CardT; mode: 'total'
       size="sm"
       footer={
         <Button size="lg" className="w-full" loading={busy} disabled={tooHigh} onClick={save}>
-          Salvar
+          {fromApp ? 'Recalcular' : 'Salvar'}
         </Button>
       }
     >
       <div className="space-y-4">
-        <div className="rounded-3xl bg-slate-50 py-5 dark:bg-ink-900">
-          <MoneyInput big autoFocus value={v} onChange={setV} />
-        </div>
-        {mode === 'total' ? (
-          <p className="text-[13px] leading-relaxed text-slate-500">
-            Limite total concedido pelo banco. O disponível passa a ser {brl(v - usage.used)} (limite − {brl(usage.used)} utilizados).
-          </p>
-        ) : (
+        {mode === 'available' && (
+          <Segmented
+            value={source}
+            onChange={setSource}
+            options={[
+              { value: 'bank', label: 'Valor do banco' },
+              { value: 'app', label: 'Calcular pelo app' },
+            ]}
+          />
+        )}
+
+        {fromApp ? (
           <>
-            <p className="text-[13px] leading-relaxed text-slate-500">
-              Digite o <b>limite disponível</b> que aparece hoje no app do {card.institution || card.name}. O app calcula quanto está comprometido com compras feitas antes de vocês começarem a usá-lo.
-            </p>
-            <div className="space-y-1.5 rounded-2xl bg-brand-50 p-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
-              <div className="flex justify-between">
-                <span>Já conhecido pelo app</span>
-                <b className="tabular-nums">{brl(known)}</b>
+            <div className="overflow-hidden rounded-3xl bg-slate-50 dark:bg-ink-900">
+              <div className="space-y-3 p-4">
+                <CalcRow label="Limite total" value={card.limitCents} />
+                <CalcRow label="Compras à vista" value={-cashSide} />
+                <CalcRow label="Compras parceladas" hint="Todas as parcelas que ainda faltam pagar" value={-installmentSide} />
               </div>
-              <div className="flex justify-between">
-                <span>Uso fora do app (novo)</span>
-                <b className="tabular-nums">{brl(card.limitCents - v - known)}</b>
+              <div className="flex items-center justify-between gap-3 border-t border-slate-200/70 bg-white/60 px-4 py-3.5 dark:border-ink-700 dark:bg-ink-800/60">
+                <span className="text-[15px] font-semibold text-slate-900 dark:text-white">Disponível</span>
+                <Money cents={card.limitCents - known} tone={card.limitCents - known < 0 ? 'expense' : 'income'} className="whitespace-nowrap text-[24px] font-bold leading-none" />
               </div>
             </div>
-            {tooHigh && <p className="text-[13px] text-expense">O disponível não pode ser maior que o limite total ({brl(card.limitCents)}).</p>}
+            <Note>
+              Considera só o que está lançado no app.
+              {usage.external !== 0 && <> O ajuste de uso fora do app ({brl(usage.external)}) deixa de ser descontado.</>}
+            </Note>
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="mb-1.5 px-1 text-[13px] font-medium text-slate-600 dark:text-slate-300">{mode === 'total' ? 'Limite total do cartão' : `Disponível no app do ${card.institution || card.name}`}</p>
+              <div className="rounded-3xl bg-slate-50 py-5 dark:bg-ink-900">
+                <MoneyInput big autoFocus value={v} onChange={setV} />
+              </div>
+              {tooHigh && <p className="mt-2 px-1 text-[13px] text-expense">O disponível não pode ser maior que o limite total ({brl(card.limitCents)}).</p>}
+            </div>
+            <div className="space-y-3 rounded-3xl bg-slate-50 p-4 dark:bg-ink-900">
+              {mode === 'total' ? (
+                <>
+                  <CalcRow label="Utilizado hoje" value={-usage.used} />
+                  <CalcRow label="Disponível passa a ser" value={v - usage.used} strong />
+                </>
+              ) : (
+                <>
+                  <CalcRow label="Lançado no app" value={known} />
+                  <CalcRow label="Uso fora do app" hint="Compras feitas antes de vocês usarem o app" value={card.limitCents - v - known} strong />
+                </>
+              )}
+            </div>
           </>
         )}
       </div>

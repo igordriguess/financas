@@ -31,6 +31,9 @@ const NATURAL_KEYS: Partial<Record<TableName, string>> = {
   invoicePayments: 'card_id,month',
 };
 
+/** Tabelas adicionadas depois da instalação: se ainda não existirem no banco, carregam vazias. */
+const OPTIONAL_TABLES: TableName[] = ['reserveEntries'];
+
 /* ─────────────── Conversão camelCase ⇄ snake_case ─────────────── */
 const toSnake = (s: string) => s.replace(/[A-Z]/g, (c) => `_${c.toLowerCase()}`);
 const toCamel = (s: string) => s.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
@@ -67,7 +70,11 @@ export class SupabaseRepository implements Repository {
         .order('created_at', { ascending: true })
         .order('id', { ascending: true })
         .range(from, from + page - 1);
-      if (error) throw error;
+      if (error) {
+        // Tabela nova cuja migração ainda não foi rodada: segue sem ela em vez de travar o app.
+        if (OPTIONAL_TABLES.includes(t) && (error.code === '42P01' || error.code === 'PGRST205')) return [];
+        throw error;
+      }
       rows.push(...(data ?? []).map(fromDb));
       if (!data || data.length < page) break;
     }

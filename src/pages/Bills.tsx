@@ -395,11 +395,46 @@ function recurrenceText(b: Bill) {
   return `${monthLabel(b.startMonth, { short: true })} a ${monthLabel(end, { short: true })} (${offset ? `parcelas ${offset + 1} a ${total} de ${total}` : `${total}x`})`;
 }
 
+/**
+ * Exclusão de conta. Conta no cartão (ou já arquivada) é apagada por completo — o que passa no
+ * cartão é gasto variável e já está na fatura. As demais, se têm histórico, são encerradas e arquivadas.
+ */
+function useRemoveBill() {
+  const data = useStore((s) => s.data);
+  const deleteBill = useStore((s) => s.deleteBill);
+  const confirm = useStore((s) => s.confirm);
+  return async (bill: Bill): Promise<boolean> => {
+    const hasHistory = data.billOccurrences.some((o) => o.billId === bill.id && o.paidAt) || bill.startMonth < currentMonth();
+    const purge = !!bill.cardId || !!bill.archivedAt || !!(billEndMonth(bill) && billEndMonth(bill)! < currentMonth());
+    const ok = await confirm(
+      purge && hasHistory
+        ? {
+            title: `Apagar ${bill.name} de vez?`,
+            message: bill.cardId
+              ? 'Ela some de Contas em todos os meses, inclusive os já marcados como pagos. Compras no cartão são gastos variáveis e continuam na fatura. Se esta conta marcou uma fatura como paga, a fatura volta a ficar pendente — pague-a na tela do cartão.'
+              : 'Ela some de Contas em todos os meses, inclusive os já marcados como pagos, e sai dos relatórios.',
+            confirmText: 'Apagar de vez',
+            danger: true,
+          }
+        : {
+            title: `Excluir ${bill.name}?`,
+            message: hasHistory ? 'A conta deixará de ser gerada. Os meses anteriores continuam no histórico e nos relatórios.' : 'A conta será removida.',
+            confirmText: 'Excluir conta',
+            danger: true,
+          },
+    );
+    if (!ok) return false;
+    await deleteBill(bill.id, { purge });
+    return true;
+  };
+}
+
 /* ───────────────────────── Ações do mês ───────────────────────── */
 function BillMonthSheet({ line, onClose }: { line: BillLine | null; onClose: () => void }) {
   const data = useStore((s) => s.data);
   const updateBill = useStore((s) => s.updateBill);
   const setBillPaid = useStore((s) => s.setBillPaid);
+  const removeBill = useRemoveBill();
   const nav = useNavigate();
   // Recalcula a linha a partir dos dados atuais (após salvar, reflete a mudança).
   const l = line ? billLine(data, data.bills.find((b) => b.id === line.bill.id) ?? line.bill, line.month) ?? line : null;
@@ -489,6 +524,7 @@ function BillMonthSheet({ line, onClose }: { line: BillLine | null; onClose: () 
           <div className="mt-4 overflow-hidden rounded-2xl ring-1 ring-slate-100 dark:ring-ink-700">
             <ActionRow icon={Pencil} label="Alterar valor ou vencimento" onClick={() => setMode('edit')} />
             <ActionRow icon={History} label="Histórico, recorrência e detalhes" onClick={() => nav(`/contas/${l.bill.id}`)} border />
+            <ActionRow icon={Trash2} label="Excluir conta" danger onClick={() => void removeBill(l.bill).then((ok) => ok && onClose())} border />
           </div>
         </div>
       )}
@@ -569,16 +605,17 @@ function BillMonthSheet({ line, onClose }: { line: BillLine | null; onClose: () 
   );
 }
 
-function ActionRow({ icon: Icon, label, onClick, border }: { icon: typeof Pencil; label: string; onClick: () => void; border?: boolean }) {
+function ActionRow({ icon: Icon, label, onClick, border, danger }: { icon: typeof Pencil; label: string; onClick: () => void; border?: boolean; danger?: boolean }) {
   return (
     <button
       onClick={onClick}
       className={cx(
-        'flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-slate-800 transition-colors press:bg-slate-100 dark:text-slate-100 dark:press:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
+        'flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium transition-colors press:bg-slate-100 dark:press:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
+        danger ? 'text-expense' : 'text-slate-800 dark:text-slate-100',
         border && 'border-t border-slate-100 dark:border-ink-700',
       )}
     >
-      <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-ink-700 dark:text-slate-300">
+      <span className={cx('flex h-9 w-9 items-center justify-center rounded-xl', danger ? 'bg-expense/10 text-expense' : 'bg-slate-100 text-slate-600 dark:bg-ink-700 dark:text-slate-300')}>
         <Icon size={18} />
       </span>
       <span className="flex-1">{label}</span>
@@ -594,7 +631,7 @@ export function BillDetailPage() {
   const pauseBill = useStore((s) => s.pauseBill);
   const resumeBill = useStore((s) => s.resumeBill);
   const endBill = useStore((s) => s.endBill);
-  const deleteBill = useStore((s) => s.deleteBill);
+  const removeBill = useRemoveBill();
   const setBillPaid = useStore((s) => s.setBillPaid);
   const confirm = useStore((s) => s.confirm);
   const nav = useNavigate();
@@ -623,15 +660,7 @@ export function BillDetailPage() {
   const paidTotal = history.filter((h) => h.line?.paid).reduce((a, h) => a + (h.line?.amountCents ?? 0), 0);
 
   async function remove() {
-    const ok = await confirm({
-      title: `Excluir ${bill!.name}?`,
-      message: 'A conta deixará de ser gerada. Os meses anteriores continuam no histórico e nos relatórios.',
-      confirmText: 'Excluir conta',
-      danger: true,
-    });
-    if (!ok) return;
-    await deleteBill(bill!.id);
-    nav('/contas', { replace: true });
+    if (await removeBill(bill!)) nav('/contas', { replace: true });
   }
 
   return (
@@ -680,6 +709,11 @@ export function BillDetailPage() {
               Excluir
             </Button>
           </div>
+        )}
+        {(bill.archivedAt || ended) && (
+          <Button variant="danger" size="sm" icon={Trash2} className="mt-4 w-full" onClick={remove}>
+            Apagar de vez, inclusive o histórico
+          </Button>
         )}
       </Card>
 

@@ -15,6 +15,7 @@ import {
   expenseLocked,
   findDuplicate,
   materializeIncomes,
+  reserveBalance,
   validateExpense,
 } from '../domain/finance';
 import {
@@ -29,6 +30,8 @@ import {
   type Income,
   type IncomeSource,
   type Person,
+  type ReserveEntry,
+  type ReserveSource,
   type TableName,
 } from '../domain/types';
 
@@ -125,8 +128,13 @@ interface State {
   removeCard(id: string): Promise<void>;
   setBenefitBalance(cardId: string, targetCents: number, note?: string): Promise<void>;
   addBenefitRecharge(cardId: string, amountCents: number, date: string, note?: string): Promise<void>;
+  /** Movimento da reserva: kind 'in' guarda, 'out' retira. source diz se mexe no saldo do mês. */
+  addReserveEntry(input: { kind: 'in' | 'out'; amountCents: number; date: string; source: ReserveSource; note: string }): Promise<void>;
+  deleteReserveEntry(id: string): Promise<void>;
   payInvoice(cardId: string, month: Month, amountCents: number, paidAt: string): Promise<void>;
   setCardAvailable(cardId: string, availableCents: number): Promise<void>;
+  /** Recalcula o disponível só com o que está lançado no app (zera o uso fora do app). */
+  recalcCardAvailable(cardId: string): Promise<void>;
   setBillsCard(billIds: string[], cardId: string | null): Promise<void>;
   unpayInvoice(cardId: string, month: Month): Promise<void>;
 
@@ -143,7 +151,8 @@ interface State {
   pauseBill(billId: string, from: Month): Promise<void>;
   resumeBill(billId: string, at: Month): Promise<void>;
   endBill(billId: string, lastMonth: Month): Promise<void>;
-  deleteBill(billId: string): Promise<void>;
+  /** Sem purge, contas com histórico são encerradas e arquivadas. Com purge, somem por completo. */
+  deleteBill(billId: string, opts?: { purge?: boolean }): Promise<void>;
   /** Converte uma conta cobrada no cartão em gasto variável (compra parcelada) nas mesmas faturas. */
   convertBillToExpense(billId: string): Promise<boolean>;
 }
@@ -412,7 +421,7 @@ export const useStore = create<State>((set, get) => {
     status: 'loading',
     error: null,
     mode: isSupabaseConfigured ? 'supabase' : 'demo',
-    data: { categories: [], cards: [], benefitEntries: [], expenses: [], installments: [], invoicePayments: [], incomeSources: [], incomes: [], bills: [], billVersions: [], billOccurrences: [] },
+    data: { categories: [], cards: [], benefitEntries: [], expenses: [], installments: [], invoicePayments: [], incomeSources: [], incomes: [], bills: [], billVersions: [], billOccurrences: [], reserveEntries: [] },
     month: readSession<Month>(MONTH_KEY, currentMonth()),
     me: demoMe(readDemoPerson()),
     members: [],
@@ -701,6 +710,15 @@ export const useStore = create<State>((set, get) => {
       if (amountCents <= 0) return get().toast('Informe um valor maior que zero', 'error');
       await commit({ upsert: { benefitEntries: rows([{ id: uid(), createdAt: nowISO(), cardId, date, amountCents, kind: 'recharge', note: note?.trim() || 'Recarga' }]) } }, 'Recarga registrada');
     },
+    async addReserveEntry({ kind, amountCents, date, source, note }) {
+      if (amountCents <= 0) return get().toast('Informe um valor maior que zero', 'error');
+      if (kind === 'out' && amountCents > reserveBalance(get().data)) return get().toast('O valor é maior que o saldo da reserva', 'error');
+      const entry: ReserveEntry = { id: uid(), createdAt: nowISO(), date, amountCents: kind === 'in' ? amountCents : -amountCents, source, note: note.trim() };
+      await commit({ upsert: { reserveEntries: rows([entry]) } }, kind === 'in' ? 'Valor guardado na reserva' : 'Valor retirado da reserva');
+    },
+    async deleteReserveEntry(id) {
+      await commit({ remove: { reserveEntries: [id] } }, 'Movimento excluído');
+    },
     async payInvoice(cardId, month, amountCents, paidAt) {
       const d = get().data;
       if (d.invoicePayments.some((p) => p.cardId === cardId && p.month === month)) return get().toast('Esta fatura já está paga', 'info');
@@ -737,6 +755,12 @@ export const useStore = create<State>((set, get) => {
       const u = creditUsage(d, card);
       const external = card.limitCents - availableCents - (u.purchases + u.bills + u.billsInstallments);
       await commit({ upsert: { cards: rows([{ ...card, externalUsedCents: external }]) } }, 'Limite disponível atualizado');
+    },
+    async recalcCardAvailable(cardId) {
+      const card = get().data.cards.find((c) => c.id === cardId);
+      if (!card) return;
+      // Considera só o que está lançado no app: zera o uso fora do app.
+      await commit({ upsert: { cards: rows([{ ...card, externalUsedCents: 0 }]) } }, 'Limite disponível recalculado pelo app');
     },
     async setBillsCard(billIds, cardId) {
       const d = get().data;
@@ -932,12 +956,13 @@ export const useStore = create<State>((set, get) => {
       return true;
     },
 
-    async deleteBill(billId) {
+    async deleteBill(billId, opts) {
       const d = get().data;
       const b = d.bills.find((x) => x.id === billId);
       if (!b) return;
       const hasHistory = d.billOccurrences.some((o) => o.billId === billId && o.paidAt) || b.startMonth < currentMonth();
-      if (!hasHistory) {
+      // purge: apaga tudo, inclusive meses já pagos (ex.: conta que nunca deveria ter existido).
+      if (!hasHistory || opts?.purge) {
         await commit(
           {
             remove: {
