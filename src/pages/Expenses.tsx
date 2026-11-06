@@ -1,9 +1,9 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, CreditCard, Receipt } from 'lucide-react';
+import { Check, CreditCard, Receipt, Undo2 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { PAYMENT_LABEL, PAYMENT_METHODS, PERSON_LABEL, RESPONSIBLES, type Expense, type PaymentMethod, type Responsible } from '../domain/types';
-import { cardBillLines, invoiceDueDate, invoicePaidInfo, invoiceTotal, isInvoicePaid, type BillLine } from '../domain/finance';
+import { PAYMENT_LABEL, PAYMENT_METHODS, PERSON_LABEL, RESPONSIBLES, type Card as CardT, type Category, type Expense, type PaymentMethod, type Responsible } from '../domain/types';
+import { cardBillLines, invoiceDueDate, invoicePaidInfo, invoiceStatus, invoiceTotal, isInvoicePaid, type BillLine } from '../domain/finance';
 import { brl } from '../lib/money';
 import { fmtDate, fmtDayHeader, monthLabel, monthOf, todayISO } from '../lib/months';
 import { Button, Card, EmptyState, ListRow, Money, MonthSwitcher, PageHeader, Sheet, cx, span5, useSessionState } from '../components/ui';
@@ -35,33 +35,29 @@ export function ExpensesPage() {
   const confirm = useStore((s) => s.confirm);
   const nav = useNavigate();
 
-  /** No crédito, pagar um item é pagar a fatura do cartão naquele mês. */
-  async function togglePaid(r: ExpRow) {
-    const e = r.expense;
-    if (e.method !== 'credit' || !e.cardId) return;
-    const card = cardById.get(e.cardId);
+  const [openInvoice, setOpenInvoice] = useState<string | null>(null);
+
+  /** No cartão só se paga a fatura inteira — nunca um item isolado. */
+  async function toggleInvoice(cardId: string) {
+    const card = cardById.get(cardId);
     if (!card) return;
-    const payment = isInvoicePaid(data, card.id, month);
-    if (r.bill && !payment) {
-      await setBillPaid(r.bill.bill.id, month, !r.bill.paid);
-      return;
-    }
-    if (payment) {
-      const ok = await confirm({ title: `Desfazer o pagamento da fatura ${card.name}?`, message: `A fatura de ${monthLabel(month)} volta a ficar pendente.`, confirmText: 'Desfazer pagamento' });
-      if (ok) await unpayInvoice(card.id, month);
+    const info = invoicePaidInfo(data, card, month);
+    if (info.paid) {
+      const ok = await confirm({ title: `Desfazer o pagamento da fatura ${card.name}?`, message: `A fatura de ${monthLabel(month)} volta a ficar pendente, com todos os itens.`, confirmText: 'Desfazer pagamento' });
+      if (!ok) return;
+      if (isInvoicePaid(data, card.id, month)) await unpayInvoice(card.id, month);
+      // Fatura dada como paga pelas contas marcadas em Contas: desfaz essas contas.
+      else for (const l of cardBillLines(data, card.id, month)) if (l.paid) await setBillPaid(l.bill.id, month, false);
       return;
     }
     const total = invoiceTotal(data, card.id, month);
-    const items = rows.filter((x) => x.group === r.group).length;
-    if (items > 1) {
-      const ok = await confirm({
-        title: `Marcar a fatura ${card.name} como paga?`,
-        message: `No cartão, o pagamento é da fatura inteira: ${items} itens, ${brl(total)} (vence ${fmtDate(invoiceDueDate(card, month))}).`,
-        confirmText: 'Marcar fatura como paga',
-      });
-      if (!ok) return;
-    }
-    await payInvoice(card.id, month, total, todayISO());
+    const count = data.installments.filter((i) => i.cardId === card.id && i.invoiceMonth === month).length + cardBillLines(data, card.id, month).length;
+    const ok = await confirm({
+      title: `Pagar a fatura ${card.name}?`,
+      message: `Fatura de ${monthLabel(month)} com ${count} ${count === 1 ? 'item' : 'itens'}: ${brl(total)} (vence ${fmtDate(invoiceDueDate(card, month))}). Todos os itens ficam pagos juntos.`,
+      confirmText: 'Pagar fatura',
+    });
+    if (ok) await payInvoice(card.id, month, total, todayISO());
   }
   const [q, setQ] = useSessionState('fic-exp-q', '');
   const [who, setWho] = useSessionState<Responsible | 'all'>('fic-exp-who', 'all');
@@ -142,6 +138,9 @@ export function ExpensesPage() {
     return { rows: out, groups: gs };
   }, [data, month, who, methods, cats, q, catById, cardById, view]);
 
+  const invoiceGroups = groups.filter(([g]) => g.startsWith('c:'));
+  const dayGroups = groups.filter(([g]) => g.startsWith('d:'));
+  const openItems = openInvoice ? (groups.find(([g]) => g === `c:${openInvoice}`)?.[1] ?? []) : [];
   const total = rows.reduce((a, r) => a + r.amount, 0);
   const byMethod = (ms: PaymentMethod[]) => rows.filter((r) => ms.includes(r.expense.method)).reduce((a, r) => a + r.amount, 0);
   const activeFilters = (who !== 'all' ? 1 : 0) + methods.length + cats.length;
@@ -176,28 +175,26 @@ export function ExpensesPage() {
       <SearchFilterBar className="mt-5" q={q} setQ={setQ} placeholder="Buscar gastos" activeCount={pills.length} onOpenFilters={() => setFiltersOpen(true)} />
       <ActivePills pills={pills} onClear={clear} />
 
-      <Card className="mt-5 p-5 md:p-6">
-        <div className="flex items-end justify-between gap-3">
-          <div>
-            <p className="text-[13px] text-slate-500">
+      <Card className="mt-5 overflow-hidden">
+        <div className="p-5">
+          <div className="flex items-start justify-between gap-3">
+            <p className="text-[13px] font-medium text-slate-500">
               {activeFilters || q ? 'Total filtrado' : view === 'invoice' ? 'Total de gastos do mês' : 'Total de compras no mês'}
             </p>
-            <p className="text-2xl font-bold tabular-nums text-slate-900 dark:text-white">{brl(total)}</p>
+            <span className="shrink-0 rounded-full bg-slate-100 px-2.5 py-0.5 text-[12px] font-semibold text-slate-600 dark:bg-ink-700 dark:text-slate-300">
+              {rows.length} {rows.length === 1 ? 'lançamento' : 'lançamentos'}
+            </span>
           </div>
-          <p className="text-[13px] text-slate-500">
-            {rows.length} {rows.length === 1 ? 'lançamento' : 'lançamentos'}
+          <Money cents={total} tone="expense" className="mt-1 block text-[30px] font-bold leading-tight tracking-tight" />
+          <p className="mt-1 text-[12px] text-slate-500">
+            {view === 'invoice' ? 'Compras no crédito entram no mês da fatura de cada parcela.' : 'Compras com o valor total, na data em que foram feitas.'}
           </p>
         </div>
-        <div className="mt-4 grid grid-cols-3 gap-3 text-[12px]">
+        <div className="grid grid-cols-3 divide-x divide-slate-100 border-t border-slate-100 dark:divide-ink-700 dark:border-ink-700">
           <Stat label="À vista" value={byMethod(['pix', 'debit', 'cash'])} />
-          <Stat label={view === 'invoice' ? 'Crédito (faturas)' : 'Crédito'} value={byMethod(['credit'])} />
-          <Stat label="Benefício" value={byMethod(['benefit'])} />
+          <Stat label={view === 'invoice' ? 'Faturas' : 'Crédito'} value={byMethod(['credit'])} />
+          <Stat label="Benefício" value={byMethod(['benefit'])} benefit />
         </div>
-        <p className="mt-2 text-[12px] text-slate-500">
-          {view === 'invoice'
-            ? 'Compras no crédito aparecem em cada mês em que têm parcela (pela fatura).'
-            : 'Mostrando o valor total das compras na data em que foram feitas.'}
-        </p>
       </Card>
 
       {groups.length === 0 ? (
@@ -210,97 +207,96 @@ export function ExpensesPage() {
           />
         </Card>
       ) : (
-        groups.map(([g, items], gi) => (
-          <section key={g} className="mt-8">
-            {/* Divisão entre o que ainda falta pagar e o que já foi pago */}
-            {items.every((x) => x.paid) && (gi === 0 || !groups[gi - 1][1].every((x) => x.paid)) && (
-              <div className="mb-5 flex items-center gap-3 px-1">
-                <span className="h-px flex-1 bg-slate-200 dark:bg-ink-700" />
-                <span className="flex items-center gap-1.5 text-[12px] font-semibold uppercase tracking-wide text-income dark:text-income-dark">
-                  <Check size={14} strokeWidth={3} /> Já pagas
-                </span>
-                <span className="h-px flex-1 bg-slate-200 dark:bg-ink-700" />
+        <>
+          {invoiceGroups.length > 0 && (
+            <section className="mt-8">
+              <div className="mb-3 flex justify-between gap-3 px-1 text-[13px] font-semibold text-slate-500">
+                <span>Faturas de {monthLabel(month)}</span>
+                <span className="shrink-0 tabular-nums">{brl(invoiceGroups.reduce((a, [, items]) => a + items.reduce((x, r) => x + r.amount, 0), 0))}</span>
               </div>
-            )}
-            <div className="mb-3 flex justify-between gap-3 px-1 text-[13px] font-semibold text-slate-500">
-              <span className="flex min-w-0 items-center gap-1.5">
-                {g.startsWith('c:') && <CreditCard size={14} style={{ color: cardById.get(g.slice(2))?.color }} className="shrink-0" />}
+              <Card>
+                {invoiceGroups.map(([g, items], i) => {
+                  const card = cardById.get(g.slice(2));
+                  if (!card) return null;
+                  const info = invoicePaidInfo(data, card, month);
+                  const st = invoiceStatus(data, card, month);
+                  const sum = items.reduce((a, r) => a + r.amount, 0);
+                  return (
+                    <div key={g} className={cx('flex items-center', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
+                      <ListRow
+                        className="min-w-0 flex-1"
+                        onClick={() => setOpenInvoice(card.id)}
+                        left={
+                          <span className="flex h-10 w-10 items-center justify-center rounded-2xl" style={{ background: `${card.color}22`, color: card.color }}>
+                            <CreditCard size={20} />
+                          </span>
+                        }
+                        title={<span className={cx(info.paid && 'text-income dark:text-income-dark')}>Fatura {card.name}</span>}
+                        subtitle={
+                          <>
+                            {info.paid ? (
+                              <span className="text-income dark:text-income-dark">Paga{info.paidAt ? ` em ${fmtDate(info.paidAt)}` : ''}</span>
+                            ) : (
+                              <span className={cx(st === 'overdue' && 'font-semibold text-expense')}>
+                                {st === 'overdue' ? 'Venceu' : 'Vence'} {fmtDate(invoiceDueDate(card, month))}
+                              </span>
+                            )}
+                            {' · '}
+                            {items.length} {items.length === 1 ? 'item' : 'itens'}
+                          </>
+                        }
+                        right={<Money cents={-sum} className={cx('whitespace-nowrap text-[15px] font-semibold', info.paid ? 'text-income line-through decoration-income/60 dark:text-income-dark' : 'text-slate-900 dark:text-white')} />}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void toggleInvoice(card.id)}
+                        aria-pressed={info.paid}
+                        aria-label={info.paid ? `Desfazer pagamento da fatura ${card.name}` : `Pagar fatura ${card.name}`}
+                        className={cx(
+                          'mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition press:scale-90',
+                          info.paid ? 'bg-income text-white' : 'border-2 border-slate-200 text-transparent hover:border-income hover:text-income dark:border-ink-600',
+                        )}
+                      >
+                        <Check size={20} strokeWidth={3} />
+                      </button>
+                    </div>
+                  );
+                })}
+              </Card>
+              <p className="mt-2 px-1 text-[12px] text-slate-500">Toque na fatura para ver os itens. O pagamento é sempre da fatura inteira.</p>
+            </section>
+          )}
+
+          {dayGroups.map(([g, items]) => (
+            <section key={g} className="mt-8">
+              <div className="mb-3 flex justify-between gap-3 px-1 text-[13px] font-semibold text-slate-500">
                 <span className="break-words">{groupHeader(g)}</span>
-                {g.startsWith('c:') && items.length > 0 && items.every((x) => x.paid) && (
-                  <span className="shrink-0 rounded-full bg-income-soft px-2 py-0.5 text-[11px] font-bold text-green-700 dark:bg-green-500/15 dark:text-income-dark">✓ Paga</span>
-                )}
-              </span>
-              <span className="shrink-0 tabular-nums">{brl(items.reduce((a, r) => a + r.amount, 0))}</span>
-            </div>
-            <Card>
-              {items.map((r, i) => {
-                const e = r.expense;
-                const c = catById.get(e.categoryId);
-                const card = e.cardId ? cardById.get(e.cardId) : null;
-                const inInvoice = r.number !== null || !!r.bill;
-                const toggleable = e.method === 'credit' && view === 'invoice';
-                return (
-                  <div key={r.key} className={cx('flex items-center', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
-                    <ListRow
-                      className="min-w-0 flex-1"
-                      onClick={() => (r.bill ? nav(`/contas/${r.bill.bill.id}`) : openExpense(e.id))}
-                      left={<WithOwner who={e.responsible}>{c ? <CategoryIcon icon={c.icon} color={c.color} size={40} /> : <span className="h-10 w-10" />}</WithOwner>}
-                      title={<span className={cx(r.paid && 'text-income line-through decoration-income/60 dark:text-income-dark')}>{e.description || c?.name || 'Gasto'}</span>}
-                      subtitle={
-                        r.bill ? (
-                          <>
-                            {c?.name} · <PersonTag who={e.responsible} />
-                            {r.bill.total && r.bill.total > 1 ? ` · parcela ${r.bill.index}/${r.bill.total}` : ''} · {r.paid ? `paga${r.bill.paidAt ? ` em ${fmtDate(r.bill.paidAt)}` : ''}` : `vence ${fmtDate(r.bill.dueDate)}`}
-                          </>
-                        ) : inInvoice ? (
-                          <>
-                            {c?.name} · <PersonTag who={e.responsible} />
-                            {e.installments > 1 ? ` · parcela ${r.number}/${e.installments}` : ' · à vista'} · compra em {fmtDate(e.date)}
-                          </>
-                        ) : (
-                          <>
-                            {c?.name} · <PersonTag who={e.responsible} /> · {card ? `${card.name}${card.deletedAt ? ' (removido)' : ''}` : PAYMENT_LABEL[e.method]}
-                          </>
-                        )
-                      }
-                      right={
-                        <div>
-                          <Money
-                            cents={-r.amount}
-                            className={cx('block text-[15px] font-semibold', r.paid ? 'text-income line-through decoration-income/60 dark:text-income-dark' : 'text-slate-900 dark:text-white')}
-                          />
-                          {inInvoice && !r.bill && e.installments > 1 && <span className="text-[12px] text-slate-500">de {brl(e.amountCents)}</span>}
-                          {!inInvoice && e.installments > 1 && <span className="text-[12px] text-slate-500">{e.installments}x de {brl(Math.floor(e.amountCents / e.installments))}</span>}
-                          {e.method === 'benefit' && <span className="text-[12px] text-orange-600">benefício</span>}
-                        </div>
-                      }
-                    />
-                    <button
-                      type="button"
-                      onClick={() => toggleable && void togglePaid(r)}
-                      disabled={!toggleable}
-                      aria-pressed={r.paid}
-                      aria-label={
-                        toggleable
-                          ? r.paid
-                            ? `Marcar ${e.description || 'gasto'} como pendente`
-                            : `Marcar ${e.description || 'gasto'} como pago`
-                          : `${e.description || 'Gasto'}: pago na hora (${PAYMENT_LABEL[e.method]})`
-                      }
-                      className={cx(
-                        'mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition press:scale-90 disabled:cursor-default',
-                        r.paid ? 'bg-income text-white' : 'border-2 border-slate-200 text-transparent hover:border-income hover:text-income dark:border-ink-600',
-                      )}
-                    >
-                      <Check size={20} strokeWidth={3} />
-                    </button>
-                  </div>
-                );
-              })}
-            </Card>
-          </section>
-        ))
+                <span className="shrink-0 tabular-nums">{brl(items.reduce((a, r) => a + r.amount, 0))}</span>
+              </div>
+              <Card>
+                {items.map((r, i) => (
+                  <ItemRow key={r.key} r={r} first={i === 0} catById={catById} cardById={cardById} onOpen={() => (r.bill ? nav(`/contas/${r.bill.bill.id}`) : openExpense(r.expense.id))} showCheck />
+                ))}
+              </Card>
+            </section>
+          ))}
+        </>
       )}
+
+      <InvoiceItemsSheet
+        cardId={openInvoice}
+        items={openItems}
+        filtered={activeFilters > 0 || !!q}
+        onClose={() => setOpenInvoice(null)}
+        onToggle={toggleInvoice}
+        onOpenItem={(r) => {
+          setOpenInvoice(null);
+          if (r.bill) nav(`/contas/${r.bill.bill.id}`);
+          else openExpense(r.expense.id);
+        }}
+        catById={catById}
+        cardById={cardById}
+      />
 
       <Sheet
         open={filtersOpen}
@@ -381,11 +377,182 @@ export function ExpensesPage() {
   );
 }
 
-function Stat({ label, value }: { label: string; value: number }) {
+function Stat({ label, value, benefit }: { label: string; value: number; benefit?: boolean }) {
   return (
-    <div className="rounded-xl bg-slate-50 p-2 dark:bg-ink-900">
-      <span className="block text-slate-500">{label}</span>
-      <span className="block font-semibold tabular-nums text-slate-800 dark:text-slate-100">{brl(value)}</span>
+    <div className="min-w-0 px-4 py-3">
+      <span className="block text-[12px] text-slate-500">{label}</span>
+      <span className={cx('block whitespace-nowrap text-[14px] font-semibold tabular-nums', benefit ? 'text-orange-600 dark:text-orange-400' : 'text-expense dark:text-expense-dark')}>{brl(value)}</span>
     </div>
+  );
+}
+
+/** Uma compra (ou parcela/conta da fatura) na lista. `showCheck`: indicador de pago para gastos à vista. */
+function ItemRow({
+  r,
+  first,
+  catById,
+  cardById,
+  onOpen,
+  showCheck,
+}: {
+  r: ExpRow;
+  first: boolean;
+  catById: Map<string, Category>;
+  cardById: Map<string, CardT>;
+  onOpen: () => void;
+  showCheck?: boolean;
+}) {
+  const e = r.expense;
+  const c = catById.get(e.categoryId);
+  const card = e.cardId ? cardById.get(e.cardId) : null;
+  const inInvoice = r.number !== null || !!r.bill;
+  return (
+    <div className={cx('flex items-center', !first && 'border-t border-slate-100 dark:border-ink-700')}>
+      <ListRow
+        className="min-w-0 flex-1"
+        onClick={onOpen}
+        left={<WithOwner who={e.responsible}>{c ? <CategoryIcon icon={c.icon} color={c.color} size={40} /> : <span className="h-10 w-10" />}</WithOwner>}
+        title={<span className={cx(r.paid && inInvoice && 'text-income line-through decoration-income/60 dark:text-income-dark')}>{e.description || c?.name || 'Gasto'}</span>}
+        subtitle={
+          r.bill ? (
+            <>
+              {c?.name} · <PersonTag who={e.responsible} />
+              {r.bill.total && r.bill.total > 1 ? ` · parcela ${r.bill.index}/${r.bill.total}` : ''} · conta fixa
+            </>
+          ) : inInvoice ? (
+            <>
+              {c?.name} · <PersonTag who={e.responsible} />
+              {e.installments > 1 ? ` · parcela ${r.number}/${e.installments}` : ' · à vista'} · compra em {fmtDate(e.date)}
+            </>
+          ) : (
+            <>
+              {c?.name} · <PersonTag who={e.responsible} /> · {card ? `${card.name}${card.deletedAt ? ' (removido)' : ''}` : PAYMENT_LABEL[e.method]}
+            </>
+          )
+        }
+        right={
+          <div className="text-right">
+            <Money
+              cents={-r.amount}
+              className={cx('block whitespace-nowrap text-[15px] font-semibold', r.paid && inInvoice ? 'text-income line-through decoration-income/60 dark:text-income-dark' : 'text-slate-900 dark:text-white')}
+            />
+            {inInvoice && !r.bill && e.installments > 1 && <span className="whitespace-nowrap text-[12px] text-slate-500">de {brl(e.amountCents)}</span>}
+            {!inInvoice && e.installments > 1 && <span className="whitespace-nowrap text-[12px] text-slate-500">{e.installments}x de {brl(Math.floor(e.amountCents / e.installments))}</span>}
+            {e.method === 'benefit' && <span className="text-[12px] text-orange-600">benefício</span>}
+          </div>
+        }
+      />
+      {showCheck && (
+        <span
+          role="img"
+          aria-label={`${e.description || 'Gasto'}: pago na hora (${PAYMENT_LABEL[e.method]})`}
+          className={cx('mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full', r.paid ? 'bg-income text-white' : 'border-2 border-slate-200 text-transparent dark:border-ink-600')}
+        >
+          <Check size={20} strokeWidth={3} />
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** Itens de uma fatura. Não há pagamento por item: só a fatura inteira. */
+function InvoiceItemsSheet({
+  cardId,
+  items,
+  filtered,
+  onClose,
+  onToggle,
+  onOpenItem,
+  catById,
+  cardById,
+}: {
+  cardId: string | null;
+  items: ExpRow[];
+  filtered: boolean;
+  onClose: () => void;
+  onToggle: (cardId: string) => Promise<void>;
+  onOpenItem: (r: ExpRow) => void;
+  catById: Map<string, Category>;
+  cardById: Map<string, CardT>;
+}) {
+  const data = useStore((s) => s.data);
+  const month = useStore((s) => s.month);
+  const nav = useNavigate();
+  const [busy, setBusy] = useState(false);
+  // Mantém o último conteúdo enquanto a janela anima ao fechar.
+  const last = useRef({ cardId, items });
+  if (cardId) last.current = { cardId, items };
+  items = last.current.items;
+  const card = last.current.cardId ? cardById.get(last.current.cardId) : null;
+  if (!card) return null;
+  const info = invoicePaidInfo(data, card, month);
+  const st = invoiceStatus(data, card, month);
+  const total = invoiceTotal(data, card.id, month);
+  const shown = items.reduce((a, r) => a + r.amount, 0);
+  // Compras mais recentes primeiro.
+  const sorted = [...items].sort((a, b) => (a.expense.date === b.expense.date ? b.expense.createdAt.localeCompare(a.expense.createdAt) : b.expense.date.localeCompare(a.expense.date)));
+
+  async function toggle() {
+    setBusy(true);
+    try {
+      await onToggle(card!.id);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Sheet
+      open={!!cardId}
+      onClose={onClose}
+      title={`Fatura ${card.name}`}
+      subtitle={`${monthLabel(month)} · vence ${fmtDate(invoiceDueDate(card, month))}`}
+      footer={
+        info.paid ? (
+          <Button variant="secondary" size="lg" icon={Undo2} className="w-full" loading={busy} onClick={toggle}>
+            Desfazer pagamento da fatura
+          </Button>
+        ) : (
+          <Button variant="success" size="lg" icon={Check} className="w-full" loading={busy} disabled={total <= 0} onClick={toggle}>
+            Pagar fatura · {brl(total)}
+          </Button>
+        )
+      }
+    >
+      <div className="flex items-center justify-between gap-3 rounded-3xl bg-slate-50 p-4 dark:bg-ink-900">
+        <div className="min-w-0">
+          <p className="text-[13px] text-slate-500">Total da fatura</p>
+          <p className="whitespace-nowrap text-[26px] font-bold leading-tight tabular-nums text-slate-900 dark:text-white">{brl(total)}</p>
+          {filtered && shown !== total && <p className="text-[12px] text-slate-500">Mostrando {brl(shown)} pelos filtros</p>}
+        </div>
+        {info.paid ? (
+          <span className="shrink-0 rounded-full bg-income-soft px-2.5 py-1 text-[12px] font-bold text-green-700 dark:bg-green-500/15 dark:text-income-dark">
+            Paga{info.paidAt ? ` em ${fmtDate(info.paidAt)}` : ''}
+          </span>
+        ) : (
+          <span className={cx('shrink-0 rounded-full px-2.5 py-1 text-[12px] font-bold', st === 'overdue' ? 'bg-expense-soft text-expense dark:bg-red-500/15' : 'bg-amber-50 text-amber-700 dark:bg-amber-500/15 dark:text-amber-200')}>
+            {st === 'overdue' ? 'Vencida' : st === 'open' ? 'Aberta' : 'Pendente'}
+          </span>
+        )}
+      </div>
+
+      <p className="mb-2 mt-5 px-1 text-[13px] font-semibold text-slate-500">
+        {sorted.length} {sorted.length === 1 ? 'item' : 'itens'}
+      </p>
+      <div className="overflow-hidden rounded-3xl ring-1 ring-slate-100 dark:ring-ink-700">
+        {sorted.map((r, i) => (
+          <ItemRow key={r.key} r={r} first={i === 0} catById={catById} cardById={cardById} onOpen={() => onOpenItem(r)} />
+        ))}
+      </div>
+      <button
+        onClick={() => {
+          onClose();
+          nav(`/cartoes/${card.id}`);
+        }}
+        className="mt-3 w-full py-2 text-center text-[14px] font-semibold text-brand-500 hover:underline"
+      >
+        Ver cartão e limite
+      </button>
+    </Sheet>
   );
 }
