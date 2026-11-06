@@ -44,7 +44,7 @@ export function Layout() {
         </div>
         <button
           onClick={() => openExpense()}
-          className="mb-6 flex h-12 items-center justify-center gap-2 rounded-2xl bg-brand-500 font-semibold text-white shadow-float transition hover:bg-brand-600 active:scale-[0.98]"
+          className="mb-6 flex h-12 items-center justify-center gap-2 rounded-2xl bg-brand-500 font-semibold text-white shadow-float transition hover:bg-brand-600 press:scale-[0.98]"
         >
           <Plus size={20} strokeWidth={2.5} /> Adicionar gasto
         </button>
@@ -111,7 +111,7 @@ export function Layout() {
       <button
         onClick={() => openExpense()}
         aria-label="Adicionar gasto"
-        className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 items-center gap-2 rounded-full bg-brand-500 pl-4 pr-5 font-semibold text-white shadow-float transition active:scale-95 md:hidden"
+        className="fixed bottom-[calc(76px+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 items-center gap-2 rounded-full bg-brand-500 pl-4 pr-5 font-semibold text-white shadow-float transition press:scale-95 md:hidden"
       >
         <Plus size={24} strokeWidth={2.5} />
         Adicionar gasto

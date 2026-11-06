@@ -37,7 +37,7 @@ export function SearchFilterBar({
         onClick={onOpenFilters}
         aria-label={activeCount ? `Filtros (${activeCount} ativos)` : 'Filtros'}
         className={cx(
-          'relative flex h-12 shrink-0 items-center gap-2 rounded-2xl border px-4 text-[15px] font-semibold transition active:scale-[0.98]',
+          'relative flex h-12 shrink-0 items-center gap-2 rounded-2xl border px-4 text-[15px] font-semibold transition press:scale-[0.98]',
           activeCount
             ? 'border-brand-500 bg-brand-50 text-brand-600 dark:border-brand-500 dark:bg-brand-500/15 dark:text-brand-100'
             : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-ink-600 dark:bg-ink-900 dark:text-slate-200',
@@ -69,7 +69,7 @@ export function ActivePills({ pills, onClear, summary }: { pills: ActivePill[]; 
             type="button"
             onClick={p.onRemove}
             aria-label={`Remover filtro ${typeof p.label === 'string' ? p.label : ''}`}
-            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 pl-3 pr-2 text-[13px] font-medium text-white transition active:scale-95 dark:bg-white dark:text-slate-900"
+            className="inline-flex h-8 items-center gap-1.5 rounded-full bg-slate-900 pl-3 pr-2 text-[13px] font-medium text-white transition press:scale-95 dark:bg-white dark:text-slate-900"
           >
             {p.label}
             <X size={14} className="opacity-70" />
@@ -102,7 +102,7 @@ export function OptionTile({ active, onClick, children, className }: { active: b
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        'flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 py-2 text-center text-[14px] font-medium leading-tight transition active:scale-[0.97]',
+        'flex min-h-11 min-w-0 items-center justify-center gap-1.5 rounded-2xl px-2 py-2 text-center text-[14px] font-medium leading-tight transition press:scale-[0.97]',
         active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-ink-700',
         className,
       )}

@@ -193,7 +193,7 @@ export function ExpenseSheet() {
         {/* 3. Categoria */}
         <div>
           <span className="mb-2 block text-[13px] font-medium text-slate-600 dark:text-slate-300">Categoria</span>
-          <div className="grid grid-cols-3 gap-2 min-[400px]:grid-cols-4 sm:grid-cols-5">
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(108px,1fr))] gap-2">
             {categories.map((c) => (
               <button
                 key={c.id}
@@ -202,7 +202,7 @@ export function ExpenseSheet() {
                 data-tip={c.name}
                 aria-pressed={f.categoryId === c.id}
                 className={cx(
-                  'flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 transition active:scale-95',
+                  'flex flex-col items-center gap-1.5 rounded-2xl px-1 py-2.5 transition press:scale-95',
                   f.categoryId === c.id ? 'bg-brand-50 ring-2 ring-brand-500 dark:bg-brand-500/15' : 'hover:bg-slate-50 dark:hover:bg-ink-700',
                 )}
               >
@@ -238,7 +238,7 @@ export function ExpenseSheet() {
                   data-tip={PAYMENT_LABEL[m]}
                   aria-pressed={active}
                   className={cx(
-                    'flex flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-semibold leading-tight transition active:scale-95',
+                    'flex flex-col items-center gap-1 rounded-2xl py-2.5 text-[11px] font-semibold leading-tight transition press:scale-95',
                     active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-600 hover:bg-slate-200 dark:bg-ink-900 dark:text-slate-300 dark:hover:bg-ink-700',
                   )}
                 >
@@ -264,7 +264,7 @@ export function ExpenseSheet() {
                   aria-pressed={f.cardId === c.id}
                   data-tip={c.kind === 'credit' ? `${c.name} · limite disponível ${brl(creditUsage(data, c).available)} · fecha dia ${c.closingDay}` : `${c.name} · saldo ${brl(benefitBalance(data, c.id))}`}
                   className={cx(
-                    'flex min-h-12 min-w-0 items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm font-semibold leading-tight transition active:scale-95',
+                    'flex min-h-12 min-w-0 items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm font-semibold leading-tight transition press:scale-95',
                     f.cardId === c.id ? 'text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-ink-700',
                   )}
                   style={f.cardId === c.id ? { background: c.color } : undefined}
@@ -298,24 +298,18 @@ export function ExpenseSheet() {
                   aria-pressed={f.installments === n}
                   data-tip={f.amountCents > 0 ? (n === 1 ? `À vista: ${brl(f.amountCents)}` : `${n}x de ${brl(Math.floor(f.amountCents / n))}`) : undefined}
                   className={cx(
-                    'h-10 min-w-0 rounded-xl px-0.5 text-[13px] font-semibold transition active:scale-95',
+                    'h-10 min-w-0 rounded-xl px-0.5 text-[13px] font-semibold transition press:scale-95',
                     f.installments === n ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-600 dark:bg-ink-900 dark:text-slate-300',
                   )}
                 >
                   {n === 1 ? 'À vista' : `${n}x`}
                 </button>
               ))}
-              <input
-                type="number"
-                inputMode="numeric"
-                min={1}
-                max={48}
-                aria-label="Outra quantidade de parcelas"
-                placeholder="Outra quantidade (até 48x)"
-                value={f.installments > 12 ? f.installments : ''}
-                onChange={(e) => set('installments', Math.min(48, Math.max(1, Number(e.target.value) || 1)))}
-                className="col-span-6 h-10 rounded-xl bg-slate-100 px-3 text-center text-sm font-semibold outline-none placeholder:text-slate-400 dark:bg-ink-900"
-              />
+              {f.installments > 12 && (
+                <p className="col-span-6 rounded-xl bg-brand-500 px-3 py-2 text-center text-[13px] font-semibold text-white">
+                  {f.installments}x (parcelamento anterior ao limite de 12x)
+                </p>
+              )}
             </div>
             {creditInfo && (
               <div className="mt-3 space-y-1 rounded-2xl bg-brand-50 p-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">

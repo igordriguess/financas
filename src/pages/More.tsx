@@ -30,7 +30,7 @@ export function MorePage() {
       </Card>
       <Card className="mt-5">
         {ITEMS.map((it, i) => (
-          <Link key={it.to} to={it.to} className={cx('flex items-center gap-3 px-4 py-3.5 transition active:bg-slate-50 dark:active:bg-ink-700', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
+          <Link key={it.to} to={it.to} className={cx('flex items-center gap-3 px-4 py-3.5 transition press:bg-slate-50 dark:press:bg-ink-700', i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
             <span className={cx('flex h-10 w-10 items-center justify-center rounded-2xl', it.color)}>
               <it.icon size={20} />
             </span>

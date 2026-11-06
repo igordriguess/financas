@@ -16,7 +16,7 @@ export function Card({ children, className, onClick }: { children: ReactNode; cl
       onClick={onClick}
       className={cx(
         'block w-full rounded-3xl bg-white text-left shadow-card ring-1 ring-black/[0.03] dark:bg-ink-800 dark:ring-white/[0.06] dark:shadow-none',
-        onClick && 'cursor-pointer transition active:scale-[0.99] [@media(hover:hover)]:hover:shadow-lg [@media(hover:hover)]:hover:ring-black/[0.06] dark:[@media(hover:hover)]:hover:ring-white/[0.12]',
+        onClick && 'cursor-pointer transition press:scale-[0.99] [@media(hover:hover)]:hover:shadow-lg [@media(hover:hover)]:hover:ring-black/[0.06] dark:[@media(hover:hover)]:hover:ring-white/[0.12]',
         className,
       )}
     >
@@ -59,7 +59,7 @@ export function Button({
       data-tip={!children ? rest['aria-label'] : undefined}
       {...rest}
       disabled={rest.disabled || loading}
-      className={cx('inline-flex select-none items-center justify-center gap-2 font-semibold transition active:scale-[0.98] disabled:opacity-50', v[variant], s, className)}
+      className={cx('inline-flex select-none items-center justify-center gap-2 font-semibold transition press:scale-[0.98] disabled:opacity-50', v[variant], s, className)}
     >
       {loading ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" /> : Icon && <Icon size={18} />}
       {children}
@@ -74,7 +74,7 @@ export function IconButton({ icon: Icon, label, className, ...rest }: ButtonHTML
       aria-label={label}
       data-tip={label}
       {...rest}
-      className={cx('inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 active:scale-95 dark:text-slate-300 dark:hover:bg-ink-700', className)}
+      className={cx('inline-flex h-10 w-10 items-center justify-center rounded-full text-slate-600 transition hover:bg-slate-100 press:scale-95 dark:text-slate-300 dark:hover:bg-ink-700', className)}
     >
       <Icon size={20} />
     </button>
@@ -190,7 +190,7 @@ export function Chip({ active, onClick, children, icon: Icon, fill, className }:
       onClick={onClick}
       aria-pressed={active}
       className={cx(
-        'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full text-sm font-medium transition active:scale-95',
+        'inline-flex h-9 shrink-0 items-center gap-1.5 rounded-full text-sm font-medium transition press:scale-95',
         fill ? 'h-auto min-h-9 w-full min-w-0 justify-center px-1.5 py-1 text-center text-[13px] leading-tight md:w-auto md:px-4 md:text-sm' : 'px-4',
         active ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-white text-slate-600 ring-1 ring-slate-200 dark:bg-ink-800 dark:text-slate-300 dark:ring-ink-600',
         className,
@@ -295,7 +295,7 @@ export function ListRow({
       onClick={onClick}
       className={cx(
         'flex w-full min-w-0 items-center gap-3.5 px-4 py-3.5 text-left md:px-5',
-        onClick && 'cursor-pointer transition-colors active:bg-slate-100 dark:active:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
+        onClick && 'cursor-pointer transition-colors press:bg-slate-100 dark:press:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
         className,
       )}
     >

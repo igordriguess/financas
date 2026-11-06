@@ -552,6 +552,8 @@ export const useStore = create<State>((set, get) => {
       if (clean.method === 'benefit' && card?.kind !== 'benefit') return { ok: false, error: 'Selecione um cartão de benefício.' };
 
       const prev = clean.id ? d.expenses.find((e) => e.id === clean.id) : null;
+      // Compras no crédito: no máximo 12x (só uma compra antiga convertida, sem mudar as parcelas, pode ter mais).
+      if (clean.method === 'credit' && clean.installments > 12 && (!prev || prev.installments !== clean.installments)) return { ok: false, error: 'Parcelas devem estar entre 1x e 12x.' };
       if (prev && expenseLocked(d, prev.id)) {
         const financialChange =
           prev.amountCents !== clean.amountCents ||

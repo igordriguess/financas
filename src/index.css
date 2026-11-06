@@ -27,3 +27,37 @@
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
 }
+
+/* Toque (celular): retorno visual só se o dedo ficar um instante no item.
+   Encostar para rolar a tela não "seleciona" nada. */
+@media (hover: none) {
+  button:not(:disabled),
+  a[href],
+  label {
+    transition-property: opacity, transform, background-color, color, box-shadow;
+  }
+  button:not(:disabled):active,
+  a[href]:active {
+    opacity: 0.72;
+    transition-delay: 90ms;
+    transition-duration: 60ms;
+  }
+}
+
+/* iPhone/Safari: campos de data e mês têm largura mínima própria e "vazam" do formulário. */
+input[type='date'],
+input[type='month'] {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  text-align: left;
+}
+input[type='date']::-webkit-date-and-time-value,
+input[type='month']::-webkit-date-and-time-value {
+  text-align: left;
+  margin: 0;
+  min-height: 1.5em;
+}

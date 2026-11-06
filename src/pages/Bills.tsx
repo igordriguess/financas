@@ -112,7 +112,7 @@ export function BillsPage() {
             onClick={() => void setBillPaid(l.bill.id, month, !l.paid)}
             aria-label={l.paid ? `Marcar ${l.bill.name} como pendente` : `Marcar ${l.bill.name} como paga`}
             className={cx(
-              'mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition active:scale-90',
+              'mr-3 flex h-10 w-10 shrink-0 items-center justify-center rounded-full transition press:scale-90',
               l.paid ? 'bg-income text-white' : 'border-2 border-slate-200 text-transparent hover:border-income hover:text-income dark:border-ink-600',
             )}
           >
@@ -215,8 +215,8 @@ export function BillsPage() {
           </FilterSection>
           {usedCats.length > 0 && (
             <FilterSection title="Categoria">
-              <div className="grid grid-cols-2 gap-2">
-                <OptionTile active={!cat} onClick={() => setCat('')} className="col-span-2">
+              <div className="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-2">
+                <OptionTile active={!cat} onClick={() => setCat('')} className="col-span-full">
                   Todas as categorias
                 </OptionTile>
                 {usedCats.map((c) => (
@@ -574,7 +574,7 @@ function ActionRow({ icon: Icon, label, onClick, border }: { icon: typeof Pencil
     <button
       onClick={onClick}
       className={cx(
-        'flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-slate-800 transition-colors active:bg-slate-100 dark:text-slate-100 dark:active:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
+        'flex w-full items-center gap-3 px-4 py-3.5 text-left text-[15px] font-medium text-slate-800 transition-colors press:bg-slate-100 dark:text-slate-100 dark:press:bg-ink-700 [@media(hover:hover)]:hover:bg-slate-50 dark:[@media(hover:hover)]:hover:bg-ink-700/60',
         border && 'border-t border-slate-100 dark:border-ink-700',
       )}
     >

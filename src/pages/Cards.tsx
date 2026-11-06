@@ -104,7 +104,7 @@ function VisualCard({ card, children, onClick }: { card: CardT; children: React.
   return (
     <button
       onClick={onClick}
-      className={cx('relative w-full overflow-hidden rounded-3xl p-5 text-left text-white shadow-card transition active:scale-[0.99]', !card.active && 'opacity-60 grayscale')}
+      className={cx('relative w-full overflow-hidden rounded-3xl p-5 text-left text-white shadow-card transition press:scale-[0.99]', !card.active && 'opacity-60 grayscale')}
       style={{ background: `linear-gradient(135deg, ${card.color}, ${shade(card.color)})` }}
     >
       <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10" />

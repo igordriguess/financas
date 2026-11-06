@@ -518,6 +518,7 @@ export function validateExpense(e: Pick<Expense, 'amountCents' | 'date' | 'metho
   if (!/^\d{4}-\d{2}-\d{2}$/.test(e.date)) return 'Data inválida.';
   if (!e.categoryId) return 'Escolha uma categoria.';
   if ((e.method === 'credit' || e.method === 'benefit') && !e.cardId) return 'Selecione o cartão utilizado.';
+  // Limite técnico; o limite de 12x para compras novas é aplicado ao salvar (contas convertidas podem ter mais).
   if (e.method === 'credit' && (e.installments < 1 || e.installments > 48)) return 'Parcelas devem estar entre 1 e 48.';
   if (e.method === 'credit' && e.firstInvoiceMonth && e.firstInvoiceMonth < monthOf(e.date)) return 'A 1ª parcela não pode cair numa fatura anterior ao mês da compra.';
   return null;

@@ -68,13 +68,13 @@ export function DashboardPage() {
           </div>
         </div>
         <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-ink-700">
-          <Link to="/receitas" className="p-4 active:bg-slate-50 dark:active:bg-ink-700">
+          <Link to="/receitas" className="p-4 press:bg-slate-50 dark:press:bg-ink-700">
             <span className="flex items-center gap-1 text-[12px] font-medium text-slate-500">
               <ArrowUpRight size={14} className="text-income" /> Receitas
             </span>
             <Money cents={s.income} tone="income" className="mt-0.5 block text-lg font-bold" />
           </Link>
-          <Link to="/relatorios" className="p-4 active:bg-slate-50 dark:active:bg-ink-700">
+          <Link to="/relatorios" className="p-4 press:bg-slate-50 dark:press:bg-ink-700">
             <span className="flex items-center gap-1 text-[12px] font-medium text-slate-500">
               <ArrowDownRight size={14} className="text-expense" /> Despesas
             </span>
@@ -165,7 +165,7 @@ export function DashboardPage() {
                       <button
                         onClick={() => void setBillPaid(b.bill.id, month, true)}
                         aria-label={`Marcar ${b.bill.name} como paga`}
-                        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-income-soft hover:text-income active:scale-90 dark:bg-ink-700"
+                        className="flex h-9 w-9 items-center justify-center rounded-full bg-slate-100 text-slate-500 transition hover:bg-income-soft hover:text-income press:scale-90 dark:bg-ink-700"
                       >
                         <Check size={18} />
                       </button>
@@ -250,7 +250,7 @@ function Row({ label, value }: { label: string; value: number }) {
 }
 function Breakdown({ label, value, to }: { label: string; value: number; to: string }) {
   return (
-    <Link to={to} className="rounded-xl p-1 active:bg-slate-50 dark:active:bg-ink-700">
+    <Link to={to} className="rounded-xl p-1 press:bg-slate-50 dark:press:bg-ink-700">
       <span className="block text-slate-500">{label}</span>
       <span className="block font-semibold tabular-nums text-slate-800 dark:text-slate-100">{brl(value)}</span>
     </Link>

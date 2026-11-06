@@ -2,6 +2,8 @@
 export default {
   content: ['./index.html', './src/**/*.{ts,tsx}'],
   darkMode: 'class',
+  // No celular, :hover "gruda" após o toque — hover só vale em aparelhos com mouse.
+  future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
       fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
@@ -34,5 +36,9 @@ export default {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    // "press:" = efeito de pressionar só com mouse. No toque, o retorno visual vem do CSS global com
+    // um pequeno atraso, para não "selecionar" itens ao encostar o dedo só para rolar a tela.
+    ({ addVariant }) => addVariant('press', '@media (hover: hover) and (pointer: fine) { &:active }'),
+  ],
 };
