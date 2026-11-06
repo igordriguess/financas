@@ -42,7 +42,7 @@ export function LoginPage() {
   }
 
   return (
-    <Shell subtitle="Controle financeiro compartilhado">
+    <Shell subtitle="Controle financeiro">
       <Card className="p-5">
         <Segmented
           value={mode}
@@ -54,7 +54,7 @@ export function LoginPage() {
         />
         <form onSubmit={submit} className="mt-5 space-y-4">
           <Field label="E-mail">
-            <Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="voce@email.com" />
+            <Input type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" />
           </Field>
           <Field label="Senha" hint={mode === 'signup' ? 'Mínimo de 6 caracteres' : undefined}>
             <Input type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} required minLength={6} value={password} onChange={(e) => setPassword(e.target.value)} />

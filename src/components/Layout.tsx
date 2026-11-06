@@ -1,6 +1,5 @@
-import { useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
-import { CreditCard, Ellipsis, House, Plus, ReceiptText, CalendarClock, CloudUpload, RefreshCw } from 'lucide-react';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { CreditCard, Ellipsis, House, Plus, ReceiptText, CalendarClock, CloudUpload } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { cx } from './ui';
 
@@ -18,21 +17,14 @@ export function Layout() {
   const mode = useStore((s) => s.mode);
   const syncing = useStore((s) => s.syncing);
   const reload = useStore((s) => s.reload);
-  const toast = useStore((s) => s.toast);
-  const [refreshing, setRefreshing] = useState(false);
+  const navigate = useNavigate();
   const loc = useLocation();
 
-  /** Logo do menu lateral funciona como "recarregar": busca os dados mais recentes sem perder a tela atual. */
-  async function refresh() {
-    if (refreshing) return;
-    setRefreshing(true);
-    const started = Date.now();
-    try {
-      if (await reload()) toast('Dados atualizados', 'success');
-    } finally {
-      // mantém a animação visível por um instante, mesmo quando a resposta é imediata
-      setTimeout(() => setRefreshing(false), Math.max(0, 700 - (Date.now() - started)));
-    }
+  /** Logo do menu lateral: volta para o Início e atualiza os dados em silêncio. */
+  function goHome() {
+    navigate('/');
+    window.scrollTo({ top: 0 });
+    void reload();
   }
   const isMore = MORE_PATHS.some((p) => loc.pathname.startsWith(p));
 
@@ -40,31 +32,16 @@ export function Layout() {
     <div className="min-h-dvh md:flex">
       {/* Menu lateral (tablet/desktop) */}
       <aside className="sticky top-0 hidden h-dvh w-64 shrink-0 flex-col border-r border-slate-200/70 bg-white/70 px-4 py-6 backdrop-blur dark:border-ink-700 dark:bg-ink-900/60 md:flex">
-        <button
-          type="button"
-          onClick={refresh}
-          disabled={refreshing}
-          aria-label="Atualizar dados"
-          data-tip="Atualizar dados"
-          className="group mb-8 flex items-center gap-2.5 rounded-2xl px-2 py-1.5 text-left transition hover:bg-slate-100 active:scale-[0.98] disabled:cursor-progress dark:hover:bg-ink-800"
-        >
-          <span className="relative h-9 w-9 shrink-0">
-            <img src="/icon.svg?v=2" alt="" className={cx('h-9 w-9 transition-transform duration-500', refreshing && 'animate-spin [animation-duration:900ms]')} />
-            <span
-              className={cx(
-                'absolute -bottom-1 -right-1 flex h-[18px] w-[18px] items-center justify-center rounded-full bg-white text-brand-500 shadow ring-1 ring-black/5 transition-opacity dark:bg-ink-700 dark:text-brand-100',
-                refreshing ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100',
-              )}
-              aria-hidden
-            >
-              <RefreshCw size={11} strokeWidth={2.75} className={cx(refreshing && 'animate-spin')} />
-            </span>
-          </span>
-          <span>
-            <span className="block text-[15px] font-bold leading-tight text-slate-900 dark:text-white">Finanças</span>
-            <span className="block text-xs text-slate-500">{refreshing ? 'Atualizando…' : 'Igor e Carol'}</span>
-          </span>
-        </button>
+        <div className="mb-8 flex items-center gap-2.5 px-2">
+          {/* Só o ícone é clicável: volta ao Início e busca os dados mais recentes, sem mensagens. */}
+          <button type="button" onClick={goHome} className="shrink-0 cursor-pointer rounded-xl focus-visible:outline-offset-4">
+            <img src="/icon.svg?v=2" alt="Ir para o início" className="block h-9 w-9" />
+          </button>
+          <div>
+            <p className="text-[15px] font-bold leading-tight text-slate-900 dark:text-white">Finanças</p>
+            <p className="text-xs text-slate-500">Igor e Carol</p>
+          </div>
+        </div>
         <button
           onClick={() => openExpense()}
           className="mb-6 flex h-12 items-center justify-center gap-2 rounded-2xl bg-brand-500 font-semibold text-white shadow-float transition hover:bg-brand-600 active:scale-[0.98]"

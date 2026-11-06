@@ -54,7 +54,9 @@ export function MorePage() {
           <LogOut size={18} /> Sair da conta
         </button>
       )}
-      <p className="mt-6 text-center text-[12px] text-slate-400">Finanças Igor e Carol · v1.0</p>
+      <p className="mt-6 text-center text-[12px] text-slate-400">
+        {new Date().getFullYear()} Desenvolvido por <strong className="font-semibold text-slate-300">IDV Labs®</strong> | Todos os direitos reservados.
+      </p>
     </div>
   );
 }
