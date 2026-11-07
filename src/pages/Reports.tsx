@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore';
 import { billLines, byResponsible, groupSum, incomeLines, monthSummary, spendingItems } from '../domain/finance';
 import { PAYMENT_LABEL, PERSON_LABEL, RESPONSIBLES, type PaymentMethod } from '../domain/types';
 import { brl, brlCompact, pct } from '../lib/money';
-import { addMonths, fmtDate, monthLabel, monthOf, monthShort } from '../lib/months';
+import { addMonths, fmtDate, monthLabel, monthOf, monthShort, type Month } from '../lib/months';
 import { Card, ListRow, Money, MonthSwitcher, PageHeader, SectionTitle, cx, span5 } from '../components/ui';
 import { CategoryIcon } from '../components/icons';
 import { OptionTile } from '../components/filters';
@@ -66,17 +66,23 @@ function ChartCard({ title, subtitle, children }: { title: string; subtitle?: st
 
 const METHOD_LABEL: Record<PaymentMethod | 'bill', string> = { ...PAYMENT_LABEL, bill: 'Contas fixas' };
 
+/** Os dados começaram a ser lançados em novembro/2026: meses anteriores ficam fora dos relatórios. */
+export const REPORTS_START: Month = '2026-11';
+
 export function ReportsPage() {
   const data = useStore((s) => s.data);
-  const month = useStore((s) => s.month);
+  const storeMonth = useStore((s) => s.month);
+  const month = storeMonth < REPORTS_START ? REPORTS_START : storeMonth;
   const dark = useIsDark();
   const c = dark ? VIZ.dark : VIZ.light;
   const [detail, setDetail] = useState<'incomes' | 'bills' | 'credit' | 'installments' | 'benefit'>('credit');
 
   const series = useMemo(
     () =>
-      [-5, -4, -3, -2, -1, 0].map((n) => {
-        const m = addMonths(month, n);
+      [-5, -4, -3, -2, -1, 0]
+        .map((n) => addMonths(month, n))
+        .filter((m) => m >= REPORTS_START)
+        .map((m) => {
         const s = monthSummary(data, m);
         // Mês sem nenhum dado: não exibimos zero (não inventar valores).
         const empty = s.income === 0 && s.outflows === 0 && s.benefitSpent === 0;
@@ -102,10 +108,10 @@ export function ReportsPage() {
   return (
     <div className="animate-fade-in">
       <PageHeader back title="Relatórios" subtitle="Histórico financeiro por competência" />
-      <MonthSwitcher />
+      <MonthSwitcher min={REPORTS_START} />
 
       <div className="mt-5 grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <ChartCard title="Receitas × despesas" subtitle="Últimos 6 meses · despesas = contas fixas + à vista + faturas">
+        <ChartCard title="Receitas × despesas" subtitle={`Desde ${monthLabel(REPORTS_START)} · despesas = contas fixas + à vista + faturas`}>
           <Legend items={[{ color: c.s1, label: 'Receitas' }, { color: c.s2, label: 'Despesas' }]} />
           <div className="h-52">
             <ResponsiveContainer>

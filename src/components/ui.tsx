@@ -243,15 +243,17 @@ export function PageHeader({ title, subtitle, back, actions }: { title: string; 
   );
 }
 
-export function MonthSwitcher({ value, onChange, compact }: { value?: Month; onChange?: (m: Month) => void; compact?: boolean }) {
+export function MonthSwitcher({ value, onChange, compact, min }: { value?: Month; onChange?: (m: Month) => void; compact?: boolean; /** Mês mais antigo permitido. */ min?: Month }) {
   const storeMonth = useStore((s) => s.month);
   const setMonth = useStore((s) => s.setMonth);
-  const m = value ?? storeMonth;
+  const raw = value ?? storeMonth;
+  const m = min && raw < min ? min : raw;
   const change = onChange ?? setMonth;
+  const atMin = !!min && m <= min;
   const isCurrent = m === currentMonth();
   return (
     <div className={cx('flex items-center justify-between rounded-2xl bg-white p-1 shadow-card ring-1 ring-black/[0.03] dark:bg-ink-800 dark:ring-white/[0.06]', compact && 'inline-flex')}>
-      <IconButton icon={ChevronLeft} label="Mês anterior" onClick={() => change(addMonths(m, -1))} />
+      <IconButton icon={ChevronLeft} label="Mês anterior" disabled={atMin} onClick={() => change(addMonths(m, -1))} className={cx(atMin && 'opacity-30')} />
       <button onClick={() => change(currentMonth())} className="flex min-w-[140px] flex-col items-center px-2" title="Voltar para o mês atual">
         <span className="text-[15px] font-semibold text-slate-900 dark:text-white">{monthLabel(m)}</span>
         {!isCurrent && <span className="text-[11px] font-medium text-brand-500">Toque para voltar a hoje</span>}
