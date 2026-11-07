@@ -141,6 +141,8 @@ interface State {
   // receitas
   saveIncomeSource(s: Partial<IncomeSource> & { name: string; responsible: Person }): Promise<void>;
   removeIncomeSource(id: string): Promise<void>;
+  /** Apaga a receita e todos os valores registrados dela (inclusive meses passados). */
+  deleteIncomeSource(id: string): Promise<void>;
   setIncome(sourceId: string, month: Month, amountCents: number, receivedDate: string | null): Promise<void>;
 
   // contas fixas
@@ -795,6 +797,19 @@ export const useStore = create<State>((set, get) => {
       const src = get().data.incomeSources.find((s) => s.id === id);
       if (src) await commit({ upsert: { incomeSources: rows([{ ...src, active: false }]) } }, 'Receita desativada — histórico preservado');
     },
+    async deleteIncomeSource(id) {
+      const d = get().data;
+      if (!d.incomeSources.some((s) => s.id === id)) return;
+      await commit(
+        {
+          remove: {
+            incomes: d.incomes.filter((i) => i.sourceId === id).map((i) => i.id),
+            incomeSources: [id],
+          },
+        },
+        'Receita excluída',
+      );
+    },
     async setIncome(sourceId, month, amountCents, receivedDate) {
       if (amountCents < 0) return get().toast('Valor inválido', 'error');
       const d = get().data;
@@ -802,7 +817,10 @@ export const useStore = create<State>((set, get) => {
       // Congela os meses intermediários antes de mudar a referência, para não alterar o passado.
       const fill = materializeIncomes({ ...d, incomeSources: d.incomeSources.filter((s) => s.id === sourceId) }, addMonths(month, -1)).filter((x) => x.month < month);
       const rec = { id: prev?.id ?? uid(), createdAt: prev?.createdAt ?? nowISO(), sourceId, month, amountCents, receivedDate };
-      await commit({ insertOnly: { incomes: rows(fill) }, upsert: { incomes: rows([rec]) } }, 'Receita salva');
+      // Meses futuros ainda não recebidos passam a acompanhar este novo valor.
+      const after = month > currentMonth() ? month : currentMonth();
+      const stale = d.incomes.filter((i) => i.sourceId === sourceId && i.month > after && !i.receivedDate).map((i) => i.id);
+      await commit({ insertOnly: { incomes: rows(fill) }, upsert: { incomes: rows([rec]) }, remove: { incomes: stale } }, 'Receita salva');
     },
 
     /* ─────────── Contas fixas ─────────── */

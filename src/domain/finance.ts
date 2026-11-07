@@ -209,13 +209,17 @@ export interface IncomeLine {
   missing: boolean;
 }
 
-export function incomeLines(d: FinanceData, month: Month): IncomeLine[] {
+/**
+ * Meses futuros sem recebimento confirmado são sempre "previstos", mesmo com valor lançado:
+ * o valor vale como referência, mas o dinheiro ainda não entrou.
+ */
+export function incomeLines(d: FinanceData, month: Month, current: Month = monthOf(todayISO())): IncomeLine[] {
   return d.incomeSources
     .slice()
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((source): IncomeLine | null => {
       const record = d.incomes.find((i) => i.sourceId === source.id && i.month === month) ?? null;
-      if (record) return { source, amountCents: record.amountCents, record, projected: false, missing: false };
+      if (record) return { source, amountCents: record.amountCents, record, projected: month > current && !record.receivedDate, missing: false };
       if (!source.active) return null;
       const prev = d.incomes
         .filter((i) => i.sourceId === source.id && i.month < month)

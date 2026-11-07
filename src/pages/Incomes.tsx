@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, CircleDashed, Pencil, Plus, Trash2, Wallet } from 'lucide-react';
+import { CheckCircle2, CircleDashed, Pencil, Plus, PowerOff, Trash2, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { incomeLines, type IncomeLine } from '../domain/finance';
 import { PEOPLE, PERSON_LABEL, type IncomeSource, type Person } from '../domain/types';
@@ -24,7 +24,7 @@ export function IncomesPage() {
       <Card className="mt-5 p-5 md:p-6">
         <p className="text-[13px] text-slate-500">Total de receitas · {monthLabel(month)}</p>
         <Money cents={total} tone="income" className="text-[28px] font-bold" />
-        {lines.some((l) => l.projected) && <p className="mt-1 text-[12px] text-slate-500">Valores marcados como “previsto” repetem o último mês registrado. Toque para confirmar ou alterar.</p>}
+        {lines.some((l) => l.projected) && <p className="mt-1 text-[12px] text-slate-500">Valores “previstos” seguem o último valor lançado. Toque para confirmar ou alterar.</p>}
       </Card>
 
       <SectionTitle>Fontes de receita</SectionTitle>
@@ -37,7 +37,7 @@ export function IncomesPage() {
               <ListRow
                 onClick={() => setEditing(l)}
                 left={
-                  <span className={cx('flex h-10 w-10 items-center justify-center rounded-2xl', l.record ? 'bg-income-soft text-income dark:bg-green-500/15' : 'bg-slate-100 text-slate-400 dark:bg-ink-700')}>
+                  <span className={cx('flex h-10 w-10 items-center justify-center rounded-2xl', l.record?.receivedDate ? 'bg-income-soft text-income dark:bg-green-500/15' : 'bg-slate-100 text-slate-400 dark:bg-ink-700')}>
                     {l.record?.receivedDate ? <CheckCircle2 size={20} /> : <CircleDashed size={20} />}
                   </span>
                 }
@@ -45,7 +45,7 @@ export function IncomesPage() {
                 subtitle={
                   <>
                     <PersonTag who={l.source.responsible} /> ·{' '}
-                    {l.missing ? 'sem valor registrado' : l.record?.receivedDate ? `recebido em ${fmtDate(l.record.receivedDate)}` : l.record ? 'registrado, não recebido' : 'previsto'}
+                    {l.missing ? 'sem valor registrado' : l.record?.receivedDate ? `recebido em ${fmtDate(l.record.receivedDate)}` : l.projected ? 'previsto' : 'a receber'}
                   </>
                 }
                 right={
@@ -72,7 +72,12 @@ export function IncomesPage() {
           <Card>
             {inactive.map((s, i) => (
               <div key={s.id} className={cx(i > 0 && 'border-t border-slate-100 dark:border-ink-700')}>
-                <ListRow title={s.name} subtitle={PERSON_LABEL[s.responsible]} right={<Button size="sm" variant="ghost" onClick={() => setSourceForm({ open: true, source: s })}>Editar</Button>} />
+                <ListRow
+                  onClick={() => setSourceForm({ open: true, source: s })}
+                  title={s.name}
+                  subtitle={PERSON_LABEL[s.responsible]}
+                  right={<span className="text-[14px] font-semibold text-brand-500">Editar ou excluir</span>}
+                />
               </div>
             ))}
           </Card>
@@ -177,6 +182,8 @@ function IncomeSheet({ line, onClose, onEditSource }: { line: IncomeLine | null;
 function SourceSheet({ open, source, onClose }: { open: boolean; source?: IncomeSource; onClose: () => void }) {
   const save = useStore((s) => s.saveIncomeSource);
   const remove = useStore((s) => s.removeIncomeSource);
+  const del = useStore((s) => s.deleteIncomeSource);
+  const data = useStore((s) => s.data);
   const confirm = useStore((s) => s.confirm);
   const [f, setF] = useResetOnOpen(open, () => ({ name: source?.name ?? '', responsible: (source?.responsible ?? 'igor') as Person, active: source?.active ?? true }));
   return (
@@ -188,7 +195,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
         <div className="flex gap-2">
           {source?.active && (
             <IconButton
-              icon={Trash2}
+              icon={PowerOff}
               label="Desativar receita"
               className="h-14 w-14 rounded-2xl bg-expense-soft text-expense dark:bg-red-500/15"
               onClick={async () => {
@@ -225,6 +232,29 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
           </Field>
         )}
         {!source && <p className="text-[13px] text-slate-500">Depois de criar, toque na receita para informar o valor do mês.</p>}
+        {source && (
+          <button
+            type="button"
+            className="flex w-full items-center justify-center gap-2 rounded-2xl py-3 text-[15px] font-semibold text-expense press:bg-expense-soft dark:press:bg-red-500/15"
+            onClick={async () => {
+              const count = data.incomes.filter((i) => i.sourceId === source.id && i.amountCents > 0).length;
+              const ok = await confirm({
+                title: `Excluir ${source.name}?`,
+                message: count
+                  ? `Ela some do app junto com ${count === 1 ? 'o valor registrado' : `os ${count} valores registrados`}, inclusive de meses passados. Os saldos desses meses vão mudar. Não dá para desfazer.`
+                  : 'Ela some do app. Não dá para desfazer.',
+                confirmText: 'Excluir',
+                danger: true,
+              });
+              if (ok) {
+                await del(source.id);
+                onClose();
+              }
+            }}
+          >
+            <Trash2 size={18} /> Excluir receita
+          </button>
+        )}
       </div>
     </Sheet>
   );

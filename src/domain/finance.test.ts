@@ -185,6 +185,14 @@ describe('receitas', () => {
     expect(l.amountCents).toBe(500000);
     expect(l.projected).toBe(true);
   });
+  it('mês futuro com valor lançado e não recebido aparece como previsto', () => {
+    const d = base();
+    d.incomes.push({ id: 'i2', createdAt: '', sourceId: 's', month: '2026-12', amountCents: 550000, receivedDate: null });
+    expect(incomeLines(d, '2026-12', '2026-11')[0].projected).toBe(true);
+    expect(incomeLines(d, '2026-11', '2026-11')[0].projected).toBe(false);
+    d.incomes[1].receivedDate = '2026-12-05';
+    expect(incomeLines(d, '2026-12', '2026-11')[0].projected).toBe(false);
+  });
   it('alterar dezembro não muda novembro e vira referência para os seguintes', () => {
     const d = base();
     d.incomes.push({ id: 'i2', createdAt: '', sourceId: 's', month: '2026-12', amountCents: 550000, receivedDate: null });
