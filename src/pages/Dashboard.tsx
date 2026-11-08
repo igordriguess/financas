@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { ArrowDownRight, ArrowUpRight, CalendarClock, Check, CreditCard, Gift, Info, PiggyBank, Receipt, TrendingUp, Wallet } from 'lucide-react';
+import { ArrowDownRight, ArrowUpRight, Calendar1, CalendarClock, CalendarRange, Check, CreditCard, Gift, Info, PiggyBank, Receipt, TrendingUp, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { benefitBalance, billLines, creditUsage, forecast, futureInstallments, monthSummary, reserveBalance } from '../domain/finance';
+import { benefitBalance, billLines, creditUsage, dailyAllowance, forecast, futureInstallments, monthSummary, reserveBalance } from '../domain/finance';
 import { PAYMENT_LABEL, PERSON_LABEL } from '../domain/types';
 import { brl } from '../lib/money';
 import { useGreeting } from '../lib/greeting';
@@ -34,6 +34,11 @@ export function DashboardPage() {
   const catById = useMemo(() => new Map(data.categories.map((c) => [c.id, c])), [data.categories]);
   const cardById = useMemo(() => new Map(data.cards.map((c) => [c.id, c])), [data.cards]);
   const isCurrent = month === currentMonth();
+  const daily = dailyAllowance(s.balance, next.projectedBalance);
+  const dailyTotal = daily.debitPerDay + daily.creditPerDay;
+  const weeklyTotal = daily.debitPerWeek + daily.creditPerWeek;
+  const [period, setPeriod] = useState<'day' | 'week'>('day');
+  const isDay = period === 'day';
   const tone = s.committedPct >= 100 ? 'red' : s.committedPct >= 85 ? 'amber' : 'green';
 
   return (
@@ -54,10 +59,9 @@ export function DashboardPage() {
             {s.incomeHasProjection && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">receita prevista</span>}
           </div>
           <p className={cx('mt-1 text-[34px] font-bold tracking-tight tabular-nums', s.balance < 0 && 'text-red-200')}>{brl(s.balance)}</p>
-          <p className="text-[13px] text-white/75">Receitas − contas fixas − gastos à vista − faturas do mês{s.reserveIn || s.reserveOut ? ' ± reserva' : ''}</p>
           <div className="mt-4">
             <div className="mb-1.5 flex justify-between text-[12px] font-medium text-white/85">
-              <span>Renda comprometida</span>
+              <span>Renda comprometida em:</span>
               <span>{s.income > 0 ? `${s.committedPct}%` : '—'}</span>
             </div>
             <div className="h-2 overflow-hidden rounded-full bg-white/20">
@@ -68,6 +72,50 @@ export function DashboardPage() {
             </div>
           </div>
         </div>
+        {isCurrent && (
+          <div className="border-b border-slate-100 p-5 dark:border-ink-700">
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[15px] font-semibold text-slate-900 dark:text-white">Pode gastar</span>
+              <div role="tablist" aria-label="Período" className="flex shrink-0 rounded-[10px] bg-slate-100 p-0.5 dark:bg-ink-900">
+                {(['day', 'week'] as const).map((p) => {
+                  const Icon = p === 'day' ? Calendar1 : CalendarRange;
+                  const label = p === 'day' ? 'Por dia' : daily.days < 7 ? 'Total até o pagamento' : 'Por semana';
+                  return (
+                    <button
+                      key={p}
+                      role="tab"
+                      aria-selected={period === p}
+                      aria-label={label}
+                      title={label}
+                      onClick={() => setPeriod(p)}
+                      className={cx(
+                        'flex h-8 w-11 items-center justify-center rounded-lg transition',
+                        period === p ? 'bg-white text-brand-500 shadow-sm dark:bg-ink-700 dark:text-white' : 'text-slate-400 dark:text-slate-500',
+                      )}
+                    >
+                      <Icon size={18} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <p className="mt-2 flex items-baseline gap-1.5">
+              <span className="text-[34px] font-bold leading-none tracking-tight tabular-nums text-slate-900 dark:text-white">{brl(isDay ? dailyTotal : weeklyTotal)}</span>
+              <span className="text-[15px] font-medium text-slate-500 dark:text-slate-400">{isDay ? 'por dia' : daily.days < 7 ? 'no total' : 'por semana'}</span>
+            </p>
+            <p className="mt-1.5 text-[13px] text-slate-500 dark:text-slate-400">
+              {daily.days} {daily.days === 1 ? 'dia' : 'dias'} até o pagamento em {fmtDate(daily.payday).slice(0, 5)}
+            </p>
+            <div className="mt-4 grid grid-cols-2 gap-2.5">
+              <SpendTile dot="bg-income" label="Débito" value={isDay ? daily.debitPerDay : daily.debitPerWeek} />
+              <SpendTile
+                dot="bg-brand-500"
+                label="Crédito"
+                value={isDay ? daily.creditPerDay : daily.creditPerWeek}
+              />
+            </div>
+          </div>
+        )}
         <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-ink-700">
           <Link to="/receitas" className="p-4 press:bg-slate-50 dark:press:bg-ink-700">
             <span className="flex items-center gap-1 text-[12px] font-medium text-slate-500">
@@ -94,14 +142,8 @@ export function DashboardPage() {
         )}
       </Card>
 
-      {/* 2.2 Disponível para gastar */}
-      <SectionTitle>Disponível para gastar</SectionTitle>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <Card className="p-5">
-          <Tile icon={Wallet} color="text-income bg-income-soft dark:bg-green-500/15" label="Dinheiro disponível" />
-          <Money cents={s.balance} tone="auto" className="mt-2 block text-2xl font-bold" />
-          <p className="mt-1 text-[12px] text-slate-500">Considera todas as contas fixas do mês, pagas ou não.</p>
-        </Card>
+      {/* 2.2 Reserva, benefícios, crédito e comprometido */}
+      <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Card className="p-5" onClick={() => nav('/reserva')}>
           <Tile icon={PiggyBank} color="text-emerald-600 bg-emerald-50 dark:bg-emerald-500/15" label="Reserva" />
           <Money cents={reserve} tone="auto" className="mt-2 block text-2xl font-bold" />
@@ -250,6 +292,17 @@ function Tile({ icon: Icon, color, label }: { icon: typeof Wallet; color: string
         <Icon size={17} />
       </span>
       <span className="text-[13px] font-semibold text-slate-600 dark:text-slate-300">{label}</span>
+    </div>
+  );
+}
+function SpendTile({ dot, label, value }: { dot: string; label: string; value: number }) {
+  return (
+    <div className="min-w-0 rounded-2xl bg-slate-50 p-3 dark:bg-ink-900">
+      <span className="flex items-center gap-1.5 text-[12px] font-medium text-slate-500 dark:text-slate-400">
+        <span className={cx('h-2 w-2 shrink-0 rounded-full', dot)} />
+        {label}
+      </span>
+      <span className="mt-1 block text-[17px] font-semibold tabular-nums text-slate-900 dark:text-white">{brl(value)}</span>
     </div>
   );
 }

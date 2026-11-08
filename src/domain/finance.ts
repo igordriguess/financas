@@ -552,3 +552,53 @@ export function validateExpense(e: Pick<Expense, 'amountCents' | 'date' | 'metho
 export function reserveBalance(d: FinanceData): number {
   return sum(d.reserveEntries.map((r) => r.amountCents));
 }
+
+/* ───────────────────────────── Gasto diário ───────────────────────────── */
+
+/** Dia do mês em que entra o pagamento. */
+export const PAYDAY = 5;
+/** Valor do mês seguinte que nunca pode ser comprometido no crédito (centavos). */
+export const NEXT_MONTH_FLOOR_CENTS = 250_000;
+
+export interface DailyAllowance {
+  /** Data ISO do próximo pagamento. */
+  payday: string;
+  /** Dias de hoje (inclusive) até o pagamento (exclusive). */
+  days: number;
+  /** Saldo do mês atual disponível no débito. */
+  debitTotal: number;
+  /** Sobra do mês seguinte, já descontado o piso, disponível no crédito. */
+  creditTotal: number;
+  debitPerDay: number;
+  creditPerDay: number;
+  /** Valor por semana (7 dias), limitado ao total quando faltam menos de 7 dias. */
+  debitPerWeek: number;
+  creditPerWeek: number;
+}
+
+/**
+ * Quanto dá para gastar por dia até o próximo pagamento:
+ * débito = saldo do mês atual; crédito = saldo projetado do mês seguinte menos o piso de segurança.
+ */
+export function dailyAllowance(currentBalance: number, nextProjectedBalance: number, today = todayISO()): DailyAllowance {
+  const [y, m, d] = today.split('-').map(Number);
+  const start = new Date(y, m - 1, d);
+  const pay = d < PAYDAY ? new Date(y, m - 1, PAYDAY) : new Date(y, m, PAYDAY);
+  const days = Math.max(1, Math.round((pay.getTime() - start.getTime()) / 86_400_000));
+  const payday = `${pay.getFullYear()}-${String(pay.getMonth() + 1).padStart(2, '0')}-${String(pay.getDate()).padStart(2, '0')}`;
+  const debitTotal = Math.max(0, currentBalance);
+  const creditTotal = Math.max(0, nextProjectedBalance - NEXT_MONTH_FLOOR_CENTS);
+  const debitPerDay = Math.floor(debitTotal / days);
+  const creditPerDay = Math.floor(creditTotal / days);
+  const weekDays = Math.min(7, days);
+  return {
+    payday,
+    days,
+    debitTotal,
+    creditTotal,
+    debitPerDay,
+    creditPerDay,
+    debitPerWeek: days <= 7 ? debitTotal : debitPerDay * weekDays,
+    creditPerWeek: days <= 7 ? creditTotal : creditPerDay * weekDays,
+  };
+}

@@ -12,7 +12,7 @@ export function CategoriesPage() {
   const data = useStore((s) => s.data);
   const month = useStore((s) => s.month);
   const [form, setForm] = useState<{ open: boolean; cat?: Category }>({ open: false });
-  const cats = useMemo(() => data.categories.filter((c) => !c.archivedAt).sort((a, b) => a.sortOrder - b.sortOrder), [data.categories]);
+  const cats = useMemo(() => data.categories.filter((c) => !c.archivedAt).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })), [data.categories]);
   const monthTotals = useMemo(() => {
     const m = new Map<string, { total: number; count: number }>();
     for (const e of data.expenses) {

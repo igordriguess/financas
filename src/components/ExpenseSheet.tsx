@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Banknote, ChevronLeft, ChevronRight, CreditCard, Gift, Landmark, Lock, QrCode, Trash2, TriangleAlert } from 'lucide-react';
+import { Banknote, Check, ChevronLeft, ChevronRight, CreditCard, Gift, Landmark, Lock, QrCode, Trash2, TriangleAlert } from 'lucide-react';
 import { readExpenseDraft, useStore, writeExpenseDraft } from '../store/useStore';
 import { benefitBalance, creditUsage, expenseLocked, invoiceDueDate, invoiceMonthFor } from '../domain/finance';
 import { PAYMENT_LABEL, PERSON_LABEL, RESPONSIBLES, type PaymentMethod, type Responsible } from '../domain/types';
@@ -7,6 +7,7 @@ import { brl, splitCents } from '../lib/money';
 import { addMonths, fmtDate, monthLabel, monthOf, todayISO } from '../lib/months';
 import { Badge, Button, Field, IconButton, Input, MoneyInput, Segmented, Sheet, cx, useResetOnOpen } from './ui';
 import { CategoryIcon } from './icons';
+import { cardGradient } from '../lib/color';
 import { PersonGlyph } from './people';
 
 const METHOD_ICON: Record<PaymentMethod, typeof QrCode> = { pix: QrCode, credit: CreditCard, debit: Landmark, cash: Banknote, benefit: Gift };
@@ -39,7 +40,7 @@ export function ExpenseSheet() {
 
   const editing = editId ? data.expenses.find((e) => e.id === editId) ?? null : null;
   const locked = editing ? expenseLocked(data, editing.id) : false;
-  const categories = useMemo(() => data.categories.filter((c) => !c.archivedAt).sort((a, b) => a.sortOrder - b.sortOrder), [data.categories]);
+  const categories = useMemo(() => data.categories.filter((c) => !c.archivedAt).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR', { sensitivity: 'base' })), [data.categories]);
   const creditCards = data.cards.filter((c) => c.kind === 'credit' && c.active && !c.deletedAt);
   const benefitCards = data.cards.filter((c) => c.kind === 'benefit' && c.active && !c.deletedAt);
 
@@ -103,8 +104,8 @@ export function ExpenseSheet() {
   })() : null;
   const benefitInfo = f.method === 'benefit' && card?.kind === 'benefit' ? benefitBalance(data, card.id) + (editing?.cardId === card.id ? editing.amountCents : 0) : null;
 
-  async function submit(allowDuplicate = false) {
-    if (saving) return;
+  async function submit(allowDuplicate = false, retry = false) {
+    if (saving && !retry) return;
     setSaving(true);
     try {
       const res = await saveExpense({ ...f, id: editing?.id }, { allowDuplicate });
@@ -115,8 +116,8 @@ export function ExpenseSheet() {
           confirmText: 'Salvar mesmo assim',
           cancelText: 'Não salvar',
         });
-        setSaving(false);
-        if (ok) await submit(true);
+        // Mantém o loading contínuo ao confirmar, sem piscar entre as duas tentativas.
+        if (ok) await submit(true, true);
         return;
       }
       if (!res.ok) {
@@ -187,7 +188,7 @@ export function ExpenseSheet() {
 
         {/* 2. Descrição */}
         <Field label="Descrição (opcional)">
-          <Input value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="Ex.: Ifood, farmácia, presente…" maxLength={80} enterKeyHint="done" />
+          <Input value={f.description} onChange={(e) => set('description', e.target.value)} placeholder="Ifood, farmácia, presente…" maxLength={80} enterKeyHint="done" />
         </Field>
 
         {/* 3. Categoria */}
@@ -255,30 +256,48 @@ export function ExpenseSheet() {
         {(f.method === 'credit' || f.method === 'benefit') && (
           <div className={cx('animate-pop-in', lockedFinancial && 'pointer-events-none opacity-60')}>
             <span className="mb-2 block text-[13px] font-medium text-slate-600 dark:text-slate-300">{f.method === 'credit' ? 'Cartão de crédito' : 'Cartão de benefício'}</span>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3" role="group" aria-label="Cartões">
-              {(f.method === 'credit' ? creditCards : benefitCards).map((c) => (
-                <button
-                  key={c.id}
-                  type="button"
-                  onClick={() => setF((p) => ({ ...p, cardId: c.id, firstInvoiceMonth: null }))}
-                  aria-pressed={f.cardId === c.id}
-                  data-tip={c.kind === 'credit' ? `${c.name} · limite disponível ${brl(creditUsage(data, c).available)} · fecha dia ${c.closingDay}` : `${c.name} · saldo ${brl(benefitBalance(data, c.id))}`}
-                  className={cx(
-                    'flex min-h-12 min-w-0 items-center gap-2 rounded-2xl px-3 py-2 text-left text-sm font-semibold leading-tight transition press:scale-95',
-                    f.cardId === c.id ? 'text-white shadow-md' : 'bg-slate-100 text-slate-700 hover:bg-slate-200 dark:bg-ink-900 dark:text-slate-200 dark:hover:bg-ink-700',
-                  )}
-                  style={f.cardId === c.id ? { background: c.color } : undefined}
-                >
-                  <span className="h-3 w-3 shrink-0 rounded-full ring-2 ring-white/70" style={{ background: c.color }} />
-                  {c.name}
-                </button>
-              ))}
-              {(f.method === 'credit' ? creditCards : benefitCards).length === 0 && <p className="text-sm text-slate-500">Nenhum cartão ativo. Cadastre em Cartões.</p>}
+            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3" role="group" aria-label="Cartões">
+              {(f.method === 'credit' ? creditCards : benefitCards).map((c) => {
+                const selected = f.cardId === c.id;
+                const amount = c.kind === 'credit' ? creditUsage(data, c).available + (editing?.cardId === c.id ? editing.amountCents : 0) : benefitBalance(data, c.id) + (editing?.cardId === c.id ? editing.amountCents : 0);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => setF((p) => ({ ...p, cardId: c.id, firstInvoiceMonth: null }))}
+                    aria-pressed={selected}
+                    aria-label={`${c.name}, ${c.kind === 'credit' ? 'limite disponível' : 'saldo'} ${brl(amount)}`}
+                    className={cx(
+                      'relative flex aspect-[1.6] min-w-0 flex-col justify-between overflow-hidden rounded-2xl p-3 text-left text-white transition duration-200 press:scale-95',
+                      selected ? 'shadow-lg ring-2 ring-brand-500 ring-offset-2 ring-offset-white dark:ring-white dark:ring-offset-ink-800' : 'opacity-55 saturate-[0.6]',
+                    )}
+                    style={{ background: cardGradient(c.color) }}
+                  >
+                    <span className="pointer-events-none absolute -right-6 -top-8 h-20 w-20 rounded-full bg-white/10" />
+                    <span className="relative flex items-start justify-between gap-2">
+                      <span className="min-w-0 break-words text-[14px] font-bold leading-tight">{c.name}</span>
+                      {selected ? (
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-white text-slate-900">
+                          <Check size={13} strokeWidth={3} />
+                        </span>
+                      ) : c.kind === 'credit' ? (
+                        <CreditCard size={16} className="shrink-0 text-white/80" />
+                      ) : (
+                        <Gift size={16} className="shrink-0 text-white/80" />
+                      )}
+                    </span>
+                    <span className="relative">
+                      <span className="block text-[11px] font-medium text-white/75">{c.kind === 'credit' ? 'Limite disponível' : 'Saldo'}</span>
+                      <span className="block text-[15px] font-bold tabular-nums">{brl(amount)}</span>
+                    </span>
+                  </button>
+                );
+              })}
+              {(f.method === 'credit' ? creditCards : benefitCards).length === 0 && <p className="col-span-2 text-sm text-slate-500">Nenhum cartão ativo. Cadastre em Cartões.</p>}
             </div>
-            {benefitInfo !== null && (
+            {benefitInfo !== null && f.amountCents > 0 && (
               <p className={cx('mt-2 text-xs', benefitInfo - f.amountCents < 0 ? 'font-semibold text-expense' : 'text-slate-500')}>
-                Saldo disponível: {brl(benefitInfo)}
-                {f.amountCents > 0 && ` → após a compra: ${brl(benefitInfo - f.amountCents)}`}
+                Saldo após a compra: {brl(benefitInfo - f.amountCents)}
                 {benefitInfo - f.amountCents < 0 && ' (saldo insuficiente)'}
               </p>
             )}

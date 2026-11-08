@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { cardGradient } from '../lib/color';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, CheckCircle2, CreditCard, Gift, Info, Pencil, Plus, RefreshCcw, Shuffle, Trash2, Undo2, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
@@ -105,7 +106,7 @@ function VisualCard({ card, children, onClick }: { card: CardT; children: React.
     <button
       onClick={onClick}
       className={cx('relative w-full overflow-hidden rounded-3xl p-5 text-left text-white shadow-card transition press:scale-[0.99]', !card.active && 'opacity-60 grayscale')}
-      style={{ background: `linear-gradient(135deg, ${card.color}, ${shade(card.color)})` }}
+      style={{ background: cardGradient(card.color) }}
     >
       <div className="pointer-events-none absolute -right-10 -top-12 h-40 w-40 rounded-full bg-white/10" />
       <div className="pointer-events-none absolute -bottom-16 right-10 h-40 w-40 rounded-full bg-white/5" />
@@ -119,12 +120,6 @@ function VisualCard({ card, children, onClick }: { card: CardT; children: React.
       {children}
     </button>
   );
-}
-
-function shade(hex: string) {
-  const n = parseInt(hex.slice(1), 16);
-  const f = (v: number) => Math.max(0, Math.round(v * 0.62));
-  return `rgb(${f(n >> 16)}, ${f((n >> 8) & 255)}, ${f(n & 255)})`;
 }
 
 /* ───────────────────────── Detalhe ───────────────────────── */
