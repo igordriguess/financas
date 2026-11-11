@@ -1,10 +1,10 @@
 import { useMemo, useState } from 'react';
-import { CheckCircle2, CircleDashed, Pencil, Plus, PowerOff, Trash2, Wallet } from 'lucide-react';
+import { CheckCircle2, CircleDashed, Info, Pencil, Plus, PowerOff, Repeat, Sparkles, Trash2, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { incomeLines, type IncomeLine } from '../domain/finance';
 import { PEOPLE, PERSON_LABEL, type IncomeSource, type Person } from '../domain/types';
 import { brl } from '../lib/money';
-import { addMonths, cmpMonth, dateInMonth, fmtDate, monthLabel, monthOf, monthShort, todayISO } from '../lib/months';
+import { addMonths, cmpMonth, dateInMonth, daysInMonth, fmtDate, monthLabel, monthOf, monthShort, todayISO } from '../lib/months';
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input, ListRow, Money, MoneyInput, MonthSwitcher, PageHeader, Segmented, SectionTitle, Sheet, cx, useResetOnOpen } from '../components/ui';
 import { PersonGlyph, PersonTag } from '../components/people';
 
@@ -52,7 +52,7 @@ export function IncomesPage() {
                   <div className="flex flex-col items-end gap-0.5">
                     <Money cents={l.amountCents} className="text-[15px] font-semibold text-slate-900 dark:text-white" />
                     {l.projected && <Badge tone="amber">previsto</Badge>}
-                    {l.source.oneOffMonth && <Badge>só neste mês</Badge>}
+                    {l.source.oneOffMonth && <Badge tone="green">dinheiro extra</Badge>}
                     {!l.source.active && <Badge>inativa</Badge>}
                   </div>
                 }
@@ -131,7 +131,7 @@ function IncomeSheet({ line, onClose, onEditSource }: { line: IncomeLine | null;
   const [busy, setBusy] = useState(false);
   const [f, setF] = useResetOnOpen(!!line, () => ({
     amount: line?.amountCents ?? 0,
-    received: !!line?.record?.receivedDate,
+    received: !!line?.record?.receivedDate || !!line?.source.oneOffMonth,
     date: line?.record?.receivedDate ?? dateInMonth(month, 5),
   }));
   if (!line) return null;
@@ -156,29 +156,37 @@ function IncomeSheet({ line, onClose, onEditSource }: { line: IncomeLine | null;
           <p className="mb-1 text-center text-[13px] text-slate-500">Valor recebido em {monthLabel(month)}</p>
           <MoneyInput big autoFocus value={f.amount} onChange={(amount) => setF({ ...f, amount })} />
         </div>
-        <Segmented
-          value={f.received ? 'yes' : 'no'}
-          onChange={(v) => setF({ ...f, received: v === 'yes' })}
-          options={[
-            { value: 'no', label: 'A receber' },
-            { value: 'yes', label: 'Recebido' },
-          ]}
-        />
+        {!line.source.oneOffMonth && (
+          <Segmented
+            value={f.received ? 'yes' : 'no'}
+            onChange={(v) => setF({ ...f, received: v === 'yes' })}
+            options={[
+              { value: 'no', label: 'A receber' },
+              { value: 'yes', label: 'Recebido' },
+            ]}
+          />
+        )}
         {f.received && (
           <Field label="Data do recebimento">
             <Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
           </Field>
         )}
         <p className="rounded-2xl bg-brand-50 p-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
-          {line.source.oneOffMonth ? `Receita pontual: entra só em ${monthLabel(month)} e não se repete nos meses seguintes.` : <>O valor vale para {monthLabel(month)} e passa a ser a referência dos meses seguintes{laterRecords ? ` (exceto ${laterRecords} mês(es) futuros já registrados)` : ''}. Meses anteriores não mudam.</>}
+          {line.source.oneOffMonth ? `Dinheiro extra: entra só em ${monthLabel(month)} e não se repete nos meses seguintes.` : <>O valor vale para {monthLabel(month)} e passa a ser a referência dos meses seguintes{laterRecords ? ` (exceto ${laterRecords} mês(es) futuros já registrados)` : ''}. Meses anteriores não mudam.</>}
         </p>
         <Button variant="ghost" icon={Pencil} className="w-full" onClick={() => onEditSource(line.source)}>
-          {line.source.oneOffMonth ? 'Editar descrição, responsável ou excluir' : 'Editar nome e responsável'}
+          {line.source.oneOffMonth ? 'Editar descrição, quem recebeu ou excluir' : 'Editar nome e responsável'}
         </Button>
       </div>
     </Sheet>
   );
 }
+
+const KINDS = [
+  { value: 'monthly' as const, title: 'Todo mês', text: 'Salário, aluguel recebido', icon: Repeat },
+  { value: 'once' as const, title: 'Dinheiro extra', text: 'Entra só neste mês', icon: Sparkles },
+];
+const EXTRA_SUGGESTIONS = ['Freela', 'Bônus', 'Reembolso', 'Venda', 'Presente'];
 
 function SourceSheet({ open, source, onClose }: { open: boolean; source?: IncomeSource; onClose: () => void }) {
   const save = useStore((s) => s.saveIncomeSource);
@@ -195,7 +203,6 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
     active: source?.active ?? true,
     kind: (source?.oneOffMonth ? 'once' : 'monthly') as 'monthly' | 'once',
     amount: 0,
-    received: true,
     date: monthOf(todayISO()) === month ? todayISO() : dateInMonth(month, 1),
   }));
   const isNew = !source;
@@ -204,7 +211,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
   async function submit() {
     setBusy(true);
     try {
-      if (isNew && once) await addOneOff({ name: f.name, responsible: f.responsible, month, amountCents: f.amount, receivedDate: f.received ? f.date : null });
+      if (isNew && once) await addOneOff({ name: f.name, responsible: f.responsible, month, amountCents: f.amount, receivedDate: f.date || dateInMonth(month, 1) });
       else await save({ ...source, name: f.name, responsible: f.responsible, active: f.active, id: source?.id });
       onClose();
     } catch {
@@ -213,11 +220,14 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
       setBusy(false);
     }
   }
+  const personOptions = PEOPLE.map((p) => ({ value: p, label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span>, ariaLabel: PERSON_LABEL[p] }));
+  const submitLabel = !isNew ? 'Salvar alterações' : once ? (f.amount > 0 ? `Adicionar ${brl(f.amount)}` : 'Adicionar receita') : 'Criar receita';
+
   return (
     <Sheet
       open={open}
       onClose={onClose}
-      title={source ? (source.oneOffMonth ? 'Editar receita pontual' : 'Editar receita') : 'Nova receita'}
+      title={source ? (source.oneOffMonth ? 'Editar dinheiro extra' : 'Editar receita') : 'Nova receita'}
       footer={
         <div className="flex gap-2">
           {source?.active && !source.oneOffMonth && (
@@ -234,42 +244,91 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
             />
           )}
           <Button size="lg" className="flex-1" loading={busy} disabled={!f.name.trim() || (isNew && once && f.amount <= 0)} onClick={submit}>
-            {isNew && once ? `Adicionar em ${monthLabel(month)}` : 'Salvar'}
+            {submitLabel}
           </Button>
         </div>
       }
     >
-      <div className="space-y-4">
+      <div className="space-y-6">
+        {/* Tipo */}
         {isNew && (
-          <Field label="Frequência">
-            <Segmented
-              value={f.kind}
-              onChange={(kind) => setF({ ...f, kind })}
-              options={[
-                { value: 'monthly', label: 'Todo mês' },
-                { value: 'once', label: 'Só neste mês' },
-              ]}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-2.5" role="radiogroup" aria-label="Tipo de receita">
+            {KINDS.map((k) => {
+              const active = f.kind === k.value;
+              return (
+                <button
+                  key={k.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  onClick={() => setF({ ...f, kind: k.value })}
+                  className={cx(
+                    'flex flex-col items-start gap-2 rounded-2xl p-3.5 text-left transition press:scale-[.98]',
+                    active ? 'bg-income-soft ring-2 ring-income dark:bg-green-500/15' : 'bg-slate-100 dark:bg-ink-900',
+                  )}
+                >
+                  <span className={cx('flex h-9 w-9 items-center justify-center rounded-xl', active ? 'bg-income text-white' : 'bg-white text-slate-500 dark:bg-ink-700 dark:text-slate-300')}>
+                    <k.icon size={19} />
+                  </span>
+                  <span>
+                    <span className="block text-[15px] font-semibold leading-tight text-slate-900 dark:text-white">{k.title}</span>
+                    <span className="mt-0.5 block text-[12px] leading-snug text-slate-500 dark:text-slate-400">{k.text}</span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         )}
+
+        {/* Valor (só dinheiro extra) */}
         {isNew && once && (
-          <div className="rounded-3xl bg-slate-50 py-5 dark:bg-ink-900">
-            <p className="mb-1 text-center text-[13px] text-slate-500">Valor recebido em {monthLabel(month)}</p>
+          <div className="animate-pop-in rounded-3xl bg-income-soft/70 py-5 dark:bg-green-500/10">
+            <p className="mb-1 text-center text-[13px] font-medium text-green-800 dark:text-green-200">Valor que entrou em {monthLabel(month)}</p>
             <MoneyInput big value={f.amount} onChange={(amount) => setF({ ...f, amount })} />
           </div>
         )}
-        <Field label={once ? 'Descrição' : 'Nome da receita'}>
-          <Input
-            value={f.name}
-            onChange={(e) => setF({ ...f, name: e.target.value })}
-            placeholder={once ? 'Ex.: Freela, venda de usado, reembolso…' : 'Ex.: Pagamento Igor, Aluguel recebido…'}
-            maxLength={50}
-            autoFocus={!isNew || !once}
-          />
+
+        {/* Descrição */}
+        <div>
+          <Field label={once ? 'De onde veio?' : 'Nome da receita'}>
+            <Input
+              value={f.name}
+              onChange={(e) => setF({ ...f, name: e.target.value })}
+              placeholder={once ? 'Ex.: Freela, venda, reembolso' : 'Ex.: Pagamento Igor, Aluguel recebido'}
+              maxLength={50}
+              enterKeyHint="done"
+            />
+          </Field>
+          {isNew && once && (
+            <div className="mt-2.5 flex flex-wrap gap-2">
+              {EXTRA_SUGGESTIONS.map((sug) => (
+                <button
+                  key={sug}
+                  type="button"
+                  onClick={() => setF({ ...f, name: sug })}
+                  aria-pressed={f.name === sug}
+                  className={cx(
+                    'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition press:scale-95',
+                    f.name === sug ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-600 dark:bg-ink-900 dark:text-slate-300',
+                  )}
+                >
+                  {sug}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <Field label={once ? 'Quem recebeu' : 'Responsável'}>
+          <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={personOptions} />
         </Field>
-        <Field label="Responsável">
-          <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={PEOPLE.map((p) => ({ value: p, label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span>, ariaLabel: PERSON_LABEL[p] }))} />
-        </Field>
+
+        {isNew && once && (
+          <Field label="Recebido em">
+            <Input type="date" value={f.date} min={dateInMonth(month, 1)} max={dateInMonth(month, daysInMonth(month))} onChange={(e) => setF({ ...f, date: e.target.value })} />
+          </Field>
+        )}
+
         {source && !source.active && (
           <Field label="Status">
             <Segmented
@@ -282,25 +341,14 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
             />
           </Field>
         )}
-        {isNew && once && (
-          <>
-            <Segmented
-              value={f.received ? 'yes' : 'no'}
-              onChange={(v) => setF({ ...f, received: v === 'yes' })}
-              options={[
-                { value: 'no', label: 'A receber' },
-                { value: 'yes', label: 'Recebido' },
-              ]}
-            />
-            {f.received && (
-              <Field label="Data do recebimento">
-                <Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
-              </Field>
-            )}
-            <p className="text-[13px] text-slate-500">Entra só em {monthLabel(month)} e não se repete nos meses seguintes.</p>
-          </>
+
+        {isNew && (
+          <p className="flex items-start gap-2.5 rounded-2xl bg-slate-50 p-3.5 text-[13px] leading-snug text-slate-600 dark:bg-ink-900 dark:text-slate-300">
+            <Info size={17} className="mt-px shrink-0 text-slate-400" />
+            {once ? `Entra como recebido em ${monthLabel(month)} e não se repete nos meses seguintes.` : 'Depois de criar, toque na receita para informar o valor de cada mês. O valor se repete até você mudar.'}
+          </p>
         )}
-        {isNew && !once && <p className="text-[13px] text-slate-500">Depois de criar, toque na receita para informar o valor do mês.</p>}
+
         {source && (
           <button
             type="button"

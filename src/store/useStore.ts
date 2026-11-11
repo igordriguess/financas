@@ -827,12 +827,12 @@ export const useStore = create<State>((set, get) => {
     },
 
     async addOneOffIncome({ name, responsible, month, amountCents, receivedDate }) {
-      if (!name.trim()) return get().toast('Informe a descrição da receita', 'error');
+      if (!name.trim()) return get().toast('Informe de onde veio o dinheiro', 'error');
       if (amountCents <= 0) return get().toast('Informe o valor da receita', 'error');
       const d = get().data;
       const src: IncomeSource = { id: uid(), createdAt: nowISO(), name: name.trim(), responsible, sortOrder: d.incomeSources.length, active: true, oneOffMonth: month };
       const rec: Income = { id: uid(), createdAt: nowISO(), sourceId: src.id, month, amountCents, receivedDate };
-      await commit({ upsert: { incomeSources: rows([src]), incomes: rows([rec]) } }, 'Receita pontual adicionada');
+      await commit({ upsert: { incomeSources: rows([src]), incomes: rows([rec]) } }, 'Dinheiro extra adicionado');
     },
 
     /* ─────────── Contas fixas ─────────── */
