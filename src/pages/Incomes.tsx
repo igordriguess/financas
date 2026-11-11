@@ -4,7 +4,7 @@ import { useStore } from '../store/useStore';
 import { incomeLines, type IncomeLine } from '../domain/finance';
 import { PEOPLE, PERSON_LABEL, type IncomeSource, type Person } from '../domain/types';
 import { brl } from '../lib/money';
-import { addMonths, cmpMonth, dateInMonth, fmtDate, monthLabel, monthShort } from '../lib/months';
+import { addMonths, cmpMonth, dateInMonth, fmtDate, monthLabel, monthOf, monthShort, todayISO } from '../lib/months';
 import { Badge, Button, Card, EmptyState, Field, IconButton, Input, ListRow, Money, MoneyInput, MonthSwitcher, PageHeader, Segmented, SectionTitle, Sheet, cx, useResetOnOpen } from '../components/ui';
 import { PersonGlyph, PersonTag } from '../components/people';
 
@@ -15,7 +15,7 @@ export function IncomesPage() {
   const [sourceForm, setSourceForm] = useState<{ open: boolean; source?: IncomeSource }>({ open: false });
   const lines = useMemo(() => incomeLines(data, month), [data, month]);
   const total = lines.reduce((a, l) => a + l.amountCents, 0);
-  const inactive = data.incomeSources.filter((s) => !s.active);
+  const inactive = data.incomeSources.filter((s) => !s.active && !s.oneOffMonth);
 
   return (
     <div className="animate-fade-in">
@@ -52,6 +52,7 @@ export function IncomesPage() {
                   <div className="flex flex-col items-end gap-0.5">
                     <Money cents={l.amountCents} className="text-[15px] font-semibold text-slate-900 dark:text-white" />
                     {l.projected && <Badge tone="amber">previsto</Badge>}
+                    {l.source.oneOffMonth && <Badge>só neste mês</Badge>}
                     {!l.source.active && <Badge>inativa</Badge>}
                   </div>
                 }
@@ -94,7 +95,7 @@ function HistoryTable() {
   const data = useStore((s) => s.data);
   const month = useStore((s) => s.month);
   const months = [-5, -4, -3, -2, -1, 0].map((n) => addMonths(month, n));
-  const sources = data.incomeSources.filter((s) => s.active || data.incomes.some((i) => i.sourceId === s.id)).sort((a, b) => a.sortOrder - b.sortOrder);
+  const sources = data.incomeSources.filter((s) => !s.oneOffMonth && (s.active || data.incomes.some((i) => i.sourceId === s.id))).sort((a, b) => a.sortOrder - b.sortOrder);
   if (!sources.length) return <p className="text-sm text-slate-500">Sem histórico.</p>;
   return (
     <div className="space-y-4">
@@ -169,10 +170,10 @@ function IncomeSheet({ line, onClose, onEditSource }: { line: IncomeLine | null;
           </Field>
         )}
         <p className="rounded-2xl bg-brand-50 p-3 text-[13px] text-brand-700 dark:bg-brand-500/10 dark:text-brand-100">
-          O valor vale para {monthLabel(month)} e passa a ser a referência dos meses seguintes{laterRecords ? ` (exceto ${laterRecords} mês(es) futuros já registrados)` : ''}. Meses anteriores não mudam.
+          {line.source.oneOffMonth ? `Receita pontual: entra só em ${monthLabel(month)} e não se repete nos meses seguintes.` : <>O valor vale para {monthLabel(month)} e passa a ser a referência dos meses seguintes{laterRecords ? ` (exceto ${laterRecords} mês(es) futuros já registrados)` : ''}. Meses anteriores não mudam.</>}
         </p>
         <Button variant="ghost" icon={Pencil} className="w-full" onClick={() => onEditSource(line.source)}>
-          Editar nome e responsável
+          {line.source.oneOffMonth ? 'Editar descrição, responsável ou excluir' : 'Editar nome e responsável'}
         </Button>
       </div>
     </Sheet>
@@ -185,15 +186,41 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
   const del = useStore((s) => s.deleteIncomeSource);
   const data = useStore((s) => s.data);
   const confirm = useStore((s) => s.confirm);
-  const [f, setF] = useResetOnOpen(open, () => ({ name: source?.name ?? '', responsible: (source?.responsible ?? 'igor') as Person, active: source?.active ?? true }));
+  const addOneOff = useStore((s) => s.addOneOffIncome);
+  const month = useStore((s) => s.month);
+  const [busy, setBusy] = useState(false);
+  const [f, setF] = useResetOnOpen(open, () => ({
+    name: source?.name ?? '',
+    responsible: (source?.responsible ?? 'igor') as Person,
+    active: source?.active ?? true,
+    kind: (source?.oneOffMonth ? 'once' : 'monthly') as 'monthly' | 'once',
+    amount: 0,
+    received: true,
+    date: monthOf(todayISO()) === month ? todayISO() : dateInMonth(month, 1),
+  }));
+  const isNew = !source;
+  const once = f.kind === 'once';
+
+  async function submit() {
+    setBusy(true);
+    try {
+      if (isNew && once) await addOneOff({ name: f.name, responsible: f.responsible, month, amountCents: f.amount, receivedDate: f.received ? f.date : null });
+      else await save({ ...source, name: f.name, responsible: f.responsible, active: f.active, id: source?.id });
+      onClose();
+    } catch {
+      /* toast */
+    } finally {
+      setBusy(false);
+    }
+  }
   return (
     <Sheet
       open={open}
       onClose={onClose}
-      title={source ? 'Editar receita' : 'Nova receita'}
+      title={source ? (source.oneOffMonth ? 'Editar receita pontual' : 'Editar receita') : 'Nova receita'}
       footer={
         <div className="flex gap-2">
-          {source?.active && (
+          {source?.active && !source.oneOffMonth && (
             <IconButton
               icon={PowerOff}
               label="Desativar receita"
@@ -206,15 +233,39 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
               }}
             />
           )}
-          <Button size="lg" className="flex-1" disabled={!f.name.trim()} onClick={() => void save({ ...source, ...f, id: source?.id }).then(onClose)}>
-            Salvar
+          <Button size="lg" className="flex-1" loading={busy} disabled={!f.name.trim() || (isNew && once && f.amount <= 0)} onClick={submit}>
+            {isNew && once ? `Adicionar em ${monthLabel(month)}` : 'Salvar'}
           </Button>
         </div>
       }
     >
       <div className="space-y-4">
-        <Field label="Nome da receita">
-          <Input value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Ex.: Pagamento Igor, Freela, Aluguel recebido…" maxLength={50} autoFocus />
+        {isNew && (
+          <Field label="Frequência">
+            <Segmented
+              value={f.kind}
+              onChange={(kind) => setF({ ...f, kind })}
+              options={[
+                { value: 'monthly', label: 'Todo mês' },
+                { value: 'once', label: 'Só neste mês' },
+              ]}
+            />
+          </Field>
+        )}
+        {isNew && once && (
+          <div className="rounded-3xl bg-slate-50 py-5 dark:bg-ink-900">
+            <p className="mb-1 text-center text-[13px] text-slate-500">Valor recebido em {monthLabel(month)}</p>
+            <MoneyInput big value={f.amount} onChange={(amount) => setF({ ...f, amount })} />
+          </div>
+        )}
+        <Field label={once ? 'Descrição' : 'Nome da receita'}>
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder={once ? 'Ex.: Freela, venda de usado, reembolso…' : 'Ex.: Pagamento Igor, Aluguel recebido…'}
+            maxLength={50}
+            autoFocus={!isNew || !once}
+          />
         </Field>
         <Field label="Responsável">
           <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={PEOPLE.map((p) => ({ value: p, label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span>, ariaLabel: PERSON_LABEL[p] }))} />
@@ -231,7 +282,25 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
             />
           </Field>
         )}
-        {!source && <p className="text-[13px] text-slate-500">Depois de criar, toque na receita para informar o valor do mês.</p>}
+        {isNew && once && (
+          <>
+            <Segmented
+              value={f.received ? 'yes' : 'no'}
+              onChange={(v) => setF({ ...f, received: v === 'yes' })}
+              options={[
+                { value: 'no', label: 'A receber' },
+                { value: 'yes', label: 'Recebido' },
+              ]}
+            />
+            {f.received && (
+              <Field label="Data do recebimento">
+                <Input type="date" value={f.date} onChange={(e) => setF({ ...f, date: e.target.value })} />
+              </Field>
+            )}
+            <p className="text-[13px] text-slate-500">Entra só em {monthLabel(month)} e não se repete nos meses seguintes.</p>
+          </>
+        )}
+        {isNew && !once && <p className="text-[13px] text-slate-500">Depois de criar, toque na receita para informar o valor do mês.</p>}
         {source && (
           <button
             type="button"

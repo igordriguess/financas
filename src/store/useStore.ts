@@ -144,6 +144,8 @@ interface State {
   /** Apaga a receita e todos os valores registrados dela (inclusive meses passados). */
   deleteIncomeSource(id: string): Promise<void>;
   setIncome(sourceId: string, month: Month, amountCents: number, receivedDate: string | null): Promise<void>;
+  /** Receita pontual (dinheiro extra): entra só no mês informado. */
+  addOneOffIncome(i: { name: string; responsible: Person; month: Month; amountCents: number; receivedDate: string | null }): Promise<void>;
 
   // contas fixas
   createBill(b: BillInput): Promise<void>;
@@ -783,6 +785,7 @@ export const useStore = create<State>((set, get) => {
         responsible: s.responsible,
         sortOrder: prev?.sortOrder ?? d.incomeSources.length,
         active: s.active ?? prev?.active ?? true,
+        ...(prev?.oneOffMonth ? { oneOffMonth: prev.oneOffMonth } : {}),
       };
       if (!src.name) return get().toast('Informe o nome da receita', 'error');
       // Reativação: os meses em que ficou desativada recebem R$ 0 explícito (o passado não muda).
@@ -821,6 +824,15 @@ export const useStore = create<State>((set, get) => {
       const after = month > currentMonth() ? month : currentMonth();
       const stale = d.incomes.filter((i) => i.sourceId === sourceId && i.month > after && !i.receivedDate).map((i) => i.id);
       await commit({ insertOnly: { incomes: rows(fill) }, upsert: { incomes: rows([rec]) }, remove: { incomes: stale } }, 'Receita salva');
+    },
+
+    async addOneOffIncome({ name, responsible, month, amountCents, receivedDate }) {
+      if (!name.trim()) return get().toast('Informe a descrição da receita', 'error');
+      if (amountCents <= 0) return get().toast('Informe o valor da receita', 'error');
+      const d = get().data;
+      const src: IncomeSource = { id: uid(), createdAt: nowISO(), name: name.trim(), responsible, sortOrder: d.incomeSources.length, active: true, oneOffMonth: month };
+      const rec: Income = { id: uid(), createdAt: nowISO(), sourceId: src.id, month, amountCents, receivedDate };
+      await commit({ upsert: { incomeSources: rows([src]), incomes: rows([rec]) } }, 'Receita pontual adicionada');
     },
 
     /* ─────────── Contas fixas ─────────── */

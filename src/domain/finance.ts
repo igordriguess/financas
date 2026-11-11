@@ -219,6 +219,10 @@ export function incomeLines(d: FinanceData, month: Month, current: Month = month
     .sort((a, b) => a.sortOrder - b.sortOrder)
     .map((source): IncomeLine | null => {
       const record = d.incomes.find((i) => i.sourceId === source.id && i.month === month) ?? null;
+      if (source.oneOffMonth) {
+        if (source.oneOffMonth !== month) return null;
+        return { source, amountCents: record?.amountCents ?? 0, record, projected: false, missing: false };
+      }
       if (record) return { source, amountCents: record.amountCents, record, projected: month > current && !record.receivedDate, missing: false };
       if (!source.active) return null;
       const prev = d.incomes
@@ -236,7 +240,7 @@ export function incomeLines(d: FinanceData, month: Month, current: Month = month
  */
 export function materializeIncomes(d: FinanceData, upTo: Month): Income[] {
   const created: Income[] = [];
-  for (const s of d.incomeSources.filter((x) => x.active)) {
+  for (const s of d.incomeSources.filter((x) => x.active && !x.oneOffMonth)) {
     const recs = d.incomes.filter((i) => i.sourceId === s.id).sort((a, b) => cmpMonth(a.month, b.month));
     if (!recs.length) continue;
     const have = new Set(recs.map((r) => r.month));

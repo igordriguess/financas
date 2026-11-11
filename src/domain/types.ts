@@ -114,6 +114,8 @@ export interface IncomeSource extends Base {
   responsible: Person;
   sortOrder: number;
   active: boolean;
+  /** Receita pontual (dinheiro extra): vale só neste mês e não é projetada para os seguintes. */
+  oneOffMonth?: Month | null;
 }
 
 /** Valor de receita registrado para um mês específico — histórico imutável por mês. */

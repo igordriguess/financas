@@ -203,6 +203,15 @@ describe('receitas', () => {
     const created = materializeIncomes(base(), '2027-01');
     expect(created.map((c) => c.month)).toEqual(['2026-12', '2027-01']);
   });
+  it('receita pontual entra só no mês dela e não é projetada', () => {
+    const d = base();
+    d.incomeSources.push({ id: 'x', createdAt: '', name: 'Freela', responsible: 'carol', sortOrder: 1, active: true, oneOffMonth: '2026-11' });
+    d.incomes.push({ id: 'i3', createdAt: '', sourceId: 'x', month: '2026-11', amountCents: 80000, receivedDate: '2026-11-10' });
+    expect(incomeLines(d, '2026-11', '2026-11').reduce((a, l) => a + l.amountCents, 0)).toBe(580000);
+    expect(incomeLines(d, '2026-12', '2026-11').map((l) => l.source.id)).toEqual(['s']);
+    expect(incomeLines(d, '2026-10', '2026-11').map((l) => l.source.id)).toEqual(['s']);
+    expect(materializeIncomes(d, '2027-01').every((c) => c.sourceId === 's')).toBe(true);
+  });
 });
 
 describe('integridade', () => {
