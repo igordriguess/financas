@@ -186,7 +186,6 @@ const KINDS = [
   { value: 'monthly' as const, title: 'Todo mês', text: 'Salário, aluguel recebido', icon: Repeat },
   { value: 'once' as const, title: 'Dinheiro extra', text: 'Entra só neste mês', icon: Sparkles },
 ];
-const EXTRA_SUGGESTIONS = ['Freela', 'Bônus', 'Reembolso', 'Venda', 'Presente'];
 
 function SourceSheet({ open, source, onClose }: { open: boolean; source?: IncomeSource; onClose: () => void }) {
   const save = useStore((s) => s.saveIncomeSource);
@@ -194,7 +193,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
   const del = useStore((s) => s.deleteIncomeSource);
   const data = useStore((s) => s.data);
   const confirm = useStore((s) => s.confirm);
-  const addOneOff = useStore((s) => s.addOneOffIncome);
+  const addIncome = useStore((s) => s.addIncome);
   const month = useStore((s) => s.month);
   const [busy, setBusy] = useState(false);
   const [f, setF] = useResetOnOpen(open, () => ({
@@ -211,7 +210,10 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
   async function submit() {
     setBusy(true);
     try {
-      if (isNew && once) await addOneOff({ name: f.name, responsible: f.responsible, month, amountCents: f.amount, receivedDate: f.date || dateInMonth(month, 1) });
+      if (isNew) {
+        const receivedDate = f.date || dateInMonth(month, 1);
+        await addIncome({ name: f.name, responsible: f.responsible, month, amountCents: f.amount, receivedDate, oneOff: once });
+      }
       else await save({ ...source, name: f.name, responsible: f.responsible, active: f.active, id: source?.id });
       onClose();
     } catch {
@@ -221,7 +223,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
     }
   }
   const personOptions = PEOPLE.map((p) => ({ value: p, label: <span className="inline-flex items-center gap-1.5"><PersonGlyph who={p} size={17} />{PERSON_LABEL[p]}</span>, ariaLabel: PERSON_LABEL[p] }));
-  const submitLabel = !isNew ? 'Salvar alterações' : once ? (f.amount > 0 ? `Adicionar ${brl(f.amount)}` : 'Adicionar receita') : 'Criar receita';
+  const submitLabel = isNew ? 'Adicionar' : 'Salvar alterações';
 
   return (
     <Sheet
@@ -243,7 +245,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
               }}
             />
           )}
-          <Button size="lg" className="flex-1" loading={busy} disabled={!f.name.trim() || (isNew && once && f.amount <= 0)} onClick={submit}>
+          <Button size="lg" className="flex-1" loading={busy} disabled={!f.name.trim() || (isNew && f.amount <= 0)} onClick={submit}>
             {submitLabel}
           </Button>
         </div>
@@ -280,50 +282,30 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
           </div>
         )}
 
-        {/* Valor (só dinheiro extra) */}
-        {isNew && once && (
-          <div className="animate-pop-in rounded-3xl bg-income-soft/70 py-5 dark:bg-green-500/10">
-            <p className="mb-1 text-center text-[13px] font-medium text-green-800 dark:text-green-200">Valor que entrou em {monthLabel(month)}</p>
+        {/* Valor */}
+        {isNew && (
+          <div className="rounded-3xl bg-income-soft/70 py-5 dark:bg-green-500/10">
+            <p className="mb-1 text-center text-[13px] font-medium text-green-800 dark:text-green-200">{once ? `Valor que entrou em ${monthLabel(month)}` : `Valor por mês, a partir de ${monthLabel(month)}`}</p>
             <MoneyInput big value={f.amount} onChange={(amount) => setF({ ...f, amount })} />
           </div>
         )}
 
         {/* Descrição */}
-        <div>
-          <Field label={once ? 'De onde veio?' : 'Nome da receita'}>
-            <Input
-              value={f.name}
-              onChange={(e) => setF({ ...f, name: e.target.value })}
-              placeholder={once ? 'Ex.: Freela, venda, reembolso' : 'Ex.: Pagamento Igor, Aluguel recebido'}
-              maxLength={50}
-              enterKeyHint="done"
-            />
-          </Field>
-          {isNew && once && (
-            <div className="mt-2.5 flex flex-wrap gap-2">
-              {EXTRA_SUGGESTIONS.map((sug) => (
-                <button
-                  key={sug}
-                  type="button"
-                  onClick={() => setF({ ...f, name: sug })}
-                  aria-pressed={f.name === sug}
-                  className={cx(
-                    'rounded-full px-3.5 py-1.5 text-[13px] font-medium transition press:scale-95',
-                    f.name === sug ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900' : 'bg-slate-100 text-slate-600 dark:bg-ink-900 dark:text-slate-300',
-                  )}
-                >
-                  {sug}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
+        <Field label={once ? 'De onde veio?' : 'Nome da receita'}>
+          <Input
+            value={f.name}
+            onChange={(e) => setF({ ...f, name: e.target.value })}
+            placeholder={once ? 'Ex.: Freela, venda, reembolso' : 'Ex.: Salário, aluguel'}
+            maxLength={50}
+            enterKeyHint="done"
+          />
+        </Field>
 
         <Field label={once ? 'Quem recebeu' : 'Responsável'}>
           <Segmented value={f.responsible} onChange={(responsible) => setF({ ...f, responsible })} options={personOptions} />
         </Field>
 
-        {isNew && once && (
+        {isNew && (
           <Field label="Recebido em">
             <Input type="date" value={f.date} min={dateInMonth(month, 1)} max={dateInMonth(month, daysInMonth(month))} onChange={(e) => setF({ ...f, date: e.target.value })} />
           </Field>
@@ -345,7 +327,7 @@ function SourceSheet({ open, source, onClose }: { open: boolean; source?: Income
         {isNew && (
           <p className="flex items-start gap-2.5 rounded-2xl bg-slate-50 p-3.5 text-[13px] leading-snug text-slate-600 dark:bg-ink-900 dark:text-slate-300">
             <Info size={17} className="mt-px shrink-0 text-slate-400" />
-            {once ? `Entra como recebido em ${monthLabel(month)} e não se repete nos meses seguintes.` : 'Depois de criar, toque na receita para informar o valor de cada mês. O valor se repete até você mudar.'}
+            {once ? `Entra como recebido em ${monthLabel(month)} e não se repete nos meses seguintes.` : `O valor se repete todo mês a partir de ${monthLabel(month)}. Se mudar em algum mês, é só tocar na receita e alterar.`}
           </p>
         )}
 
