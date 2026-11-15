@@ -10,7 +10,7 @@ const NAV = [
   { to: '/contas', label: 'Contas', icon: CalendarClock },
   { to: '/mais', label: 'Mais', icon: Ellipsis },
 ];
-const MORE_PATHS = ['/mais', '/receitas', '/categorias', '/relatorios', '/proximo-mes', '/configuracoes', '/usuarios'];
+const MORE_PATHS = ['/mais', '/saldo-remanescente', '/reserva', '/receitas', '/categorias', '/relatorios', '/proximo-mes', '/configuracoes', '/usuarios'];
 
 export function Layout() {
   const openExpense = useStore((s) => s.openExpense);

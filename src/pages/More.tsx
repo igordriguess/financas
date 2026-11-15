@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
-import { BarChart3, ChevronRight, LogOut, PiggyBank, Settings, Tags, TrendingUp, Users, Wallet } from 'lucide-react';
+import { BarChart3, ChevronRight, Landmark, LogOut, PiggyBank, Settings, Tags, TrendingUp, Users, Wallet } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { Card, PageHeader, cx } from '../components/ui';
 
@@ -8,6 +8,7 @@ const ITEMS = [
   { to: '/receitas', label: 'Receitas', desc: 'Pagamentos mensais de Igor e Carol', icon: Wallet, color: 'bg-income-soft text-income dark:bg-green-500/15' },
   { to: '/reserva', label: 'Reserva', desc: 'Guardar e retirar dinheiro da reserva', icon: PiggyBank, color: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15' },
   { to: '/proximo-mes', label: 'Próximo mês', desc: 'Previsão de receitas e compromissos', icon: TrendingUp, color: 'bg-brand-50 text-brand-500 dark:bg-brand-500/15' },
+  { to: '/saldo-remanescente', label: 'Saldo Remanescente', desc: 'Quanto deve sobrar na conta do próximo mês', icon: Landmark, color: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15' },
   { to: '/relatorios', label: 'Relatórios', desc: 'Histórico, gráficos e comparativos', icon: BarChart3, color: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15' },
   { to: '/categorias', label: 'Categorias', desc: 'Organize seus gastos', icon: Tags, color: 'bg-orange-50 text-orange-600 dark:bg-orange-500/15' },
   { to: '/usuarios', label: 'Usuários', desc: 'Quem participa deste ambiente', icon: Users, color: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15' },
@@ -61,3 +62,4 @@ export function MorePage() {
     </div>
   );
 }
+

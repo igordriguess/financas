@@ -34,7 +34,8 @@ export function DashboardPage() {
   const catById = useMemo(() => new Map(data.categories.map((c) => [c.id, c])), [data.categories]);
   const cardById = useMemo(() => new Map(data.cards.map((c) => [c.id, c])), [data.cards]);
   const isCurrent = month === currentMonth();
-  const daily = dailyAllowance(s.balance, next.projectedBalance);
+  const nextMonthFloor = useStore((st) => st.nextMonthFloorCents);
+  const daily = dailyAllowance(s.balance, next.projectedBalance, nextMonthFloor);
   const dailyTotal = daily.debitPerDay + daily.creditPerDay;
   const weeklyTotal = daily.debitPerWeek + daily.creditPerWeek;
   const [period, setPeriod] = useState<'day' | 'week'>('day');

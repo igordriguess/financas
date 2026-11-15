@@ -16,6 +16,7 @@ import { ReservePage } from './pages/Reserve';
 import { CategoriesPage } from './pages/Categories';
 const ReportsPage = lazy(() => import('./pages/Reports').then((m) => ({ default: m.ReportsPage })));
 import { ForecastPage } from './pages/Forecast';
+import { RemainingValuePage } from './pages/RemainingValue';
 import { SettingsPage, UsersPage, applyTheme, readTheme } from './pages/Settings';
 import { LoginPage, OnboardingPage } from './pages/Auth';
 
@@ -69,6 +70,7 @@ export default function App() {
           <Route path="categorias" element={<CategoriesPage />} />
           <Route path="relatorios" element={<Suspense fallback={<p className="py-10 text-center text-sm text-slate-500">Carregando relatórios…</p>}><ReportsPage /></Suspense>} />
           <Route path="proximo-mes" element={<ForecastPage />} />
+          <Route path="saldo-remanescente" element={<RemainingValuePage />} />
           <Route path="configuracoes" element={<SettingsPage />} />
           <Route path="usuarios" element={<UsersPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />

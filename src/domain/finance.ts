@@ -561,7 +561,7 @@ export function reserveBalance(d: FinanceData): number {
 
 /** Dia do mês em que entra o pagamento. */
 export const PAYDAY = 5;
-/** Valor do mês seguinte que nunca pode ser comprometido no crédito (centavos). */
+/** Valor padrão do mês seguinte que nunca pode ser comprometido no crédito (centavos). Ajustável no menu Mais. */
 export const NEXT_MONTH_FLOOR_CENTS = 250_000;
 
 export interface DailyAllowance {
@@ -584,14 +584,14 @@ export interface DailyAllowance {
  * Quanto dá para gastar por dia até o próximo pagamento:
  * débito = saldo do mês atual; crédito = saldo projetado do mês seguinte menos o piso de segurança.
  */
-export function dailyAllowance(currentBalance: number, nextProjectedBalance: number, today = todayISO()): DailyAllowance {
+export function dailyAllowance(currentBalance: number, nextProjectedBalance: number, floorCents = NEXT_MONTH_FLOOR_CENTS, today = todayISO()): DailyAllowance {
   const [y, m, d] = today.split('-').map(Number);
   const start = new Date(y, m - 1, d);
   const pay = d < PAYDAY ? new Date(y, m - 1, PAYDAY) : new Date(y, m, PAYDAY);
   const days = Math.max(1, Math.round((pay.getTime() - start.getTime()) / 86_400_000));
   const payday = `${pay.getFullYear()}-${String(pay.getMonth() + 1).padStart(2, '0')}-${String(pay.getDate()).padStart(2, '0')}`;
   const debitTotal = Math.max(0, currentBalance);
-  const creditTotal = Math.max(0, nextProjectedBalance - NEXT_MONTH_FLOOR_CENTS);
+  const creditTotal = Math.max(0, nextProjectedBalance - Math.max(0, floorCents));
   const debitPerDay = Math.floor(debitTotal / days);
   const creditPerDay = Math.floor(creditTotal / days);
   const weekDays = Math.min(7, days);

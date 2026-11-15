@@ -15,6 +15,7 @@ import {
   expenseLocked,
   findDuplicate,
   materializeIncomes,
+  NEXT_MONTH_FLOOR_CENTS,
   reserveBalance,
   validateExpense,
 } from '../domain/finance';
@@ -87,6 +88,8 @@ interface State {
   me: Me;
   members: Member[];
   household: { id: string; name: string; inviteCode: string } | null;
+  /** Valor do mês seguinte que nunca pode ser comprometido no crédito (centavos). */
+  nextMonthFloorCents: number;
   syncing: number;
 
   toasts: Toast[];
@@ -104,6 +107,7 @@ interface State {
   removeMember(userId: string): Promise<void>;
   updateMyProfile(displayName: string): Promise<void>;
   setDemoPerson(p: Person): void;
+  setNextMonthFloor(cents: number): Promise<boolean>;
   resetDemo(): Promise<void>;
 
   // UI
@@ -182,6 +186,7 @@ interface Snapshot {
   me: Me;
   members: Member[];
   household: { id: string; name: string; inviteCode: string };
+  nextMonthFloorCents?: number;
   data: FinanceData;
   savedAt: number;
 }
@@ -238,6 +243,17 @@ const readDemoPerson = (): Person => {
     return 'igor';
   }
 };
+const DEMO_FLOOR_KEY = 'fic-demo-next-month-floor';
+const readDemoFloor = (): number => {
+  try {
+    const n = Number(localStorage.getItem(DEMO_FLOOR_KEY));
+    return localStorage.getItem(DEMO_FLOOR_KEY) !== null && Number.isInteger(n) && n >= 0 ? n : NEXT_MONTH_FLOOR_CENTS;
+  } catch {
+    return NEXT_MONTH_FLOOR_CENTS;
+  }
+};
+const toFloor = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) && v >= 0 ? v : typeof v === 'string' && /^\d+$/.test(v) ? Number(v) : NEXT_MONTH_FLOOR_CENTS);
+
 const demoMe = (p: Person): Me => ({ userId: null, person: p, displayName: p === 'igor' ? 'Igor' : 'Carol', email: null, role: 'owner' });
 
 const errMsg = (e: unknown) => (e && typeof e === 'object' && 'message' in e ? String((e as { message: unknown }).message) : String(e));
@@ -337,7 +353,7 @@ export const useStore = create<State>((set, get) => {
     set({ data: d, status: 'ready', error: null });
     const s = get();
     if (r.mode === 'supabase' && s.me.userId && s.household) {
-      writeCache(s.me.userId, { me: s.me, members: s.members, household: s.household, data: d, savedAt: lastLoadAt });
+      writeCache(s.me.userId, { me: s.me, members: s.members, household: s.household, nextMonthFloorCents: s.nextMonthFloorCents, data: d, savedAt: lastLoadAt });
     }
   }
 
@@ -360,6 +376,11 @@ export const useStore = create<State>((set, get) => {
       // Exclusões: o Supabase não entrega DELETE em assinatura filtrada — escuta sem filtro e relê os dados.
       channel.on('postgres_changes', { event: 'DELETE', schema: 'public', table: tableName(t) }, onRemote);
     }
+    // Ajustes do ambiente (ex.: piso do mês seguinte) alterados pela outra pessoa.
+    channel.on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'households', filter: `id=eq.${householdId}` }, (payload) => {
+      const row = payload.new as { next_month_floor_cents?: unknown };
+      if (row && 'next_month_floor_cents' in row) set({ nextMonthFloorCents: toFloor(row.next_month_floor_cents) });
+    });
     channel.subscribe();
   }
 
@@ -382,6 +403,7 @@ export const useStore = create<State>((set, get) => {
     set({
       me: { userId: session.user.id, person: mem.person, displayName: mem.display_name, email: mem.email, role: mem.role },
       household: hh ? { id: hh.id, name: hh.name, inviteCode: hh.invite_code } : null,
+      nextMonthFloorCents: toFloor(hh?.next_month_floor_cents),
       members: (allMembers ?? []).map((m) => ({ userId: m.user_id, person: m.person, displayName: m.display_name, email: m.email, role: m.role })),
     });
     if (!repo || channelHousehold !== mem.household_id) repo = new SupabaseRepository(sb, mem.household_id);
@@ -410,7 +432,7 @@ export const useStore = create<State>((set, get) => {
     const cache = readCache(session.user.id);
     if (cache) {
       repo = new SupabaseRepository(supabase, cache.household.id);
-      set({ me: cache.me, members: cache.members, household: cache.household, data: cache.data, status: 'ready', error: null });
+      set({ me: cache.me, members: cache.members, household: cache.household, nextMonthFloorCents: toFloor(cache.nextMonthFloorCents), data: cache.data, status: 'ready', error: null });
       subscribeRealtime(cache.household.id);
     }
     try {
@@ -430,6 +452,7 @@ export const useStore = create<State>((set, get) => {
     me: demoMe(readDemoPerson()),
     members: [],
     household: null,
+    nextMonthFloorCents: isSupabaseConfigured ? NEXT_MONTH_FLOOR_CENTS : readDemoFloor(),
     syncing: 0,
     toasts: [],
     confirmReq: null,
@@ -516,6 +539,33 @@ export const useStore = create<State>((set, get) => {
         /* ignore */
       }
       set({ me: demoMe(p) });
+    },
+    async setNextMonthFloor(cents) {
+      if (!Number.isInteger(cents) || cents < 0 || cents > 100_000_000_00) {
+        get().toast('Valor inválido. Confira e tente de novo.', 'error');
+        return false;
+      }
+      const { household } = get();
+      if (!supabase || !household) {
+        try {
+          localStorage.setItem(DEMO_FLOOR_KEY, String(cents));
+        } catch {
+          /* ignore */
+        }
+        set({ nextMonthFloorCents: cents });
+        get().toast('Saldo remanescente atualizado', 'success');
+        return true;
+      }
+      const { error } = await supabase.from('households').update({ next_month_floor_cents: cents }).eq('id', household.id);
+      if (error) {
+        get().toast(`Não foi possível salvar: ${error.message}`, 'error');
+        return false;
+      }
+      set({ nextMonthFloorCents: cents });
+      const s = get();
+      if (s.me.userId) writeCache(s.me.userId, { me: s.me, members: s.members, household, nextMonthFloorCents: cents, data: s.data, savedAt: lastLoadAt });
+      get().toast('Saldo remanescente atualizado', 'success');
+      return true;
     },
     async resetDemo() {
       DemoRepository.reset();
