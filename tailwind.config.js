@@ -6,7 +6,8 @@ export default {
   future: { hoverOnlyWhenSupported: true },
   theme: {
     extend: {
-      fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'Segoe UI', 'sans-serif'] },
+      // No iPhone/Mac usa a fonte do sistema (SF Pro), como um app nativo; nos demais, Inter.
+      fontFamily: { sans: ['-apple-system', 'BlinkMacSystemFont', '"SF Pro Text"', 'Inter', 'system-ui', 'Segoe UI', 'sans-serif'] },
       colors: {
         brand: { 50: '#eef4ff', 100: '#dbe7ff', 500: '#2f6bf0', 600: '#2457d6', 700: '#1d45ad' },
         income: { DEFAULT: '#12a150', soft: '#e6f6ec', dark: '#22c36b' },
@@ -14,8 +15,10 @@ export default {
         ink: { 950: '#0b0d12', 900: '#11141b', 800: '#181c25', 700: '#232835', 600: '#323848' },
       },
       boxShadow: {
-        card: '0 1px 2px rgba(16,24,40,.04), 0 4px 16px rgba(16,24,40,.06)',
+        card: '0 1px 2px rgba(16,24,40,.03), 0 6px 24px rgba(16,24,40,.05)',
         float: '0 8px 24px rgba(47,107,240,.35)',
+        hero: '0 18px 40px -16px rgba(47,107,240,.6)',
+        bar: '0 10px 36px rgba(15,23,42,.14), 0 1px 2px rgba(15,23,42,.06)',
       },
       borderRadius: { '2xl': '1.125rem', '3xl': '1.5rem' },
       keyframes: {

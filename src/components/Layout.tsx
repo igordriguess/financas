@@ -85,25 +85,26 @@ export function Layout() {
         </div>
       )}
 
-      {/* Barra inferior (celular) */}
-      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200/70 bg-white/90 pb-[env(safe-area-inset-bottom)] backdrop-blur-xl dark:border-ink-700 dark:bg-ink-900/90 md:hidden">
-        <div className="relative mx-auto grid max-w-lg grid-cols-5">
-          {NAV.map((n, i) => (
-            <div key={n.to} className={cx('flex', i === 2 && 'pl-0')}>
-              <NavLink
-                to={n.to}
-                end={n.end}
-                className={({ isActive }) =>
-                  cx(
-                    'flex h-16 flex-1 flex-col items-center justify-center gap-1 text-[11px] font-semibold transition',
-                    isActive || (n.to === '/mais' && isMore) ? 'text-brand-500' : 'text-slate-400 dark:text-slate-500',
-                  )
-                }
-              >
-                <n.icon size={23} strokeWidth={2} />
-                {n.label}
-              </NavLink>
-            </div>
+      {/* Barra inferior (celular): cápsula flutuante de vidro, no estilo iOS */}
+      <nav className="pointer-events-none fixed inset-x-0 bottom-0 z-40 px-3 pb-[max(10px,env(safe-area-inset-bottom))] md:hidden">
+        <div className="pointer-events-auto mx-auto grid max-w-lg grid-cols-5 gap-0.5 rounded-[30px] border border-white/70 bg-white/80 p-1.5 shadow-bar backdrop-blur-2xl backdrop-saturate-150 dark:border-white/[0.08] dark:bg-ink-800/80">
+          {NAV.map((n) => (
+            <NavLink
+              key={n.to}
+              to={n.to}
+              end={n.end}
+              className={({ isActive }) =>
+                cx(
+                  'flex h-[54px] min-w-0 flex-col items-center justify-center gap-0.5 rounded-[24px] text-[11px] font-semibold transition-colors',
+                  isActive || (n.to === '/mais' && isMore)
+                    ? 'bg-brand-50 text-brand-600 dark:bg-brand-500/20 dark:text-brand-100'
+                    : 'text-slate-500 dark:text-slate-400',
+                )
+              }
+            >
+              <n.icon size={22} strokeWidth={2} />
+              {n.label}
+            </NavLink>
           ))}
         </div>
       </nav>
@@ -111,7 +112,7 @@ export function Layout() {
       <button
         onClick={() => openExpense()}
         aria-label="Adicionar gasto"
-        className="fixed bottom-[calc(80px+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-lg shadow-brand-500/30 transition-colors active:bg-brand-600 md:hidden"
+        className="fixed bottom-[calc(92px+env(safe-area-inset-bottom))] right-4 z-40 flex h-14 w-14 items-center justify-center rounded-full bg-brand-500 text-white shadow-float ring-4 ring-white/70 transition-colors active:bg-brand-600 dark:ring-ink-950/70 md:hidden"
       >
         <Plus size={26} strokeWidth={2} absoluteStrokeWidth aria-hidden />
       </button>

@@ -44,35 +44,56 @@ export function DashboardPage() {
 
   return (
     <div className="animate-fade-in">
-      <header className="pb-4 pt-[max(20px,env(safe-area-inset-top))] md:pb-5 md:pt-8">
-        <h1 className="break-words text-[28px] font-bold leading-tight tracking-tight text-slate-900 dark:text-white md:text-[32px]">
-          {greeting}, {me.displayName || PERSON_LABEL[me.person]}
-        </h1>
-        <p className="mt-1 text-[15px] text-slate-500 dark:text-slate-400">Este é o resumo de {monthLabel(month)}</p>
-      </header>
-      <MonthSwitcher />
-
-      {/* 2.1 Resumo financeiro */}
-      <Card className="mt-5 overflow-hidden">
-        <div className="bg-gradient-to-br from-brand-500 to-brand-700 p-5 text-white">
-          <div className="flex items-center justify-between">
-            <span className="text-[13px] font-medium text-white/80">Saldo do mês {isCurrent ? '' : `· ${monthLabel(month)}`}</span>
-            {s.incomeHasProjection && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">receita prevista</span>}
-          </div>
-          <p className={cx('mt-1 text-[34px] font-bold tracking-tight tabular-nums', s.balance < 0 && 'text-red-200')}>{brl(s.balance)}</p>
-          <div className="mt-4">
-            <div className="mb-1.5 flex justify-between text-[12px] font-medium text-white/85">
-              <span>Renda comprometida em:</span>
-              <span>{s.income > 0 ? `${s.committedPct}%` : '—'}</span>
-            </div>
-            <div className="h-2 overflow-hidden rounded-full bg-white/20">
-              <div
-                className={cx('h-full rounded-full transition-all duration-700', tone === 'red' ? 'bg-red-300' : tone === 'amber' ? 'bg-amber-300' : 'bg-emerald-300')}
-                style={{ width: `${Math.min(100, s.committedPct)}%` }}
-              />
-            </div>
+      {/* 2.1 Resumo financeiro — topo azul, no estilo de app nativo */}
+      <section className="-mx-4 rounded-b-[32px] bg-gradient-to-b from-brand-500 to-brand-600 px-4 pb-5 pt-[max(18px,env(safe-area-inset-top))] text-white shadow-hero md:mx-0 md:mt-8 md:rounded-[32px] md:p-6">
+        <div className="flex items-center gap-3">
+          <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-lg font-bold ring-1 ring-white/30" aria-hidden>
+            {(me.displayName || PERSON_LABEL[me.person]).charAt(0).toUpperCase()}
+          </span>
+          <div className="min-w-0">
+            <p className="text-[13px] text-white/75">{greeting},</p>
+            <h1 className="break-words text-[20px] font-bold leading-tight tracking-tight">{me.displayName || PERSON_LABEL[me.person]}</h1>
           </div>
         </div>
+
+        <MonthSwitcher onBrand className="mt-4" />
+
+        <div className="mt-5 flex items-center justify-between gap-2">
+          <span className="text-[13px] font-medium text-white/80">Saldo do mês {isCurrent ? '' : `· ${monthLabel(month)}`}</span>
+          {s.incomeHasProjection && <span className="rounded-full bg-white/15 px-2 py-0.5 text-[11px] font-semibold">receita prevista</span>}
+        </div>
+        <p className={cx('mt-0.5 break-words text-[40px] font-bold leading-tight tracking-tight tabular-nums', s.balance < 0 && 'text-red-200')}>{brl(s.balance)}</p>
+
+        <div className="mt-3">
+          <div className="mb-1.5 flex justify-between text-[12px] font-medium text-white/85">
+            <span>Renda comprometida em:</span>
+            <span>{s.income > 0 ? `${s.committedPct}%` : '—'}</span>
+          </div>
+          <div className="h-2 overflow-hidden rounded-full bg-white/20">
+            <div
+              className={cx('h-full rounded-full transition-all duration-700', tone === 'red' ? 'bg-red-300' : tone === 'amber' ? 'bg-amber-300' : 'bg-emerald-300')}
+              style={{ width: `${Math.min(100, s.committedPct)}%` }}
+            />
+          </div>
+        </div>
+
+        <div className="mt-4 grid grid-cols-2 gap-2.5">
+          <Link to="/receitas" className="min-w-0 rounded-2xl bg-white/[0.13] p-3 ring-1 ring-white/15 press:bg-white/20">
+            <span className="flex items-center gap-1 text-[12px] font-medium text-white/80">
+              <ArrowUpRight size={14} className="text-emerald-300" /> Receitas
+            </span>
+            <span className="mt-0.5 block break-words text-[17px] font-bold tabular-nums">{brl(s.income)}</span>
+          </Link>
+          <Link to="/relatorios" className="min-w-0 rounded-2xl bg-white/[0.13] p-3 ring-1 ring-white/15 press:bg-white/20">
+            <span className="flex items-center gap-1 text-[12px] font-medium text-white/80">
+              <ArrowDownRight size={14} className="text-red-300" /> Despesas
+            </span>
+            <span className="mt-0.5 block break-words text-[17px] font-bold tabular-nums">{brl(s.outflows)}</span>
+          </Link>
+        </div>
+      </section>
+
+      <Card className="mt-5 overflow-hidden">
         {isCurrent && (
           <div className="border-b border-slate-100 p-5 dark:border-ink-700">
             <div className="flex items-center justify-between gap-3">
@@ -117,21 +138,7 @@ export function DashboardPage() {
             </div>
           </div>
         )}
-        <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-ink-700">
-          <Link to="/receitas" className="p-4 press:bg-slate-50 dark:press:bg-ink-700">
-            <span className="flex items-center gap-1 text-[12px] font-medium text-slate-500">
-              <ArrowUpRight size={14} className="text-income" /> Receitas
-            </span>
-            <Money cents={s.income} tone="income" className="mt-0.5 block text-lg font-bold" />
-          </Link>
-          <Link to="/relatorios" className="p-4 press:bg-slate-50 dark:press:bg-ink-700">
-            <span className="flex items-center gap-1 text-[12px] font-medium text-slate-500">
-              <ArrowDownRight size={14} className="text-expense" /> Despesas
-            </span>
-            <Money cents={s.outflows} tone="expense" className="mt-0.5 block text-lg font-bold" />
-          </Link>
-        </div>
-        <div className="grid grid-cols-3 gap-2 border-t border-slate-100 px-4 py-3 text-[12px] dark:border-ink-700">
+        <div className="grid grid-cols-3 gap-2 px-4 py-3 text-[12px]">
           <Breakdown label="Contas fixas" value={s.fixed} to="/contas" />
           <Breakdown label="À vista" value={s.cashSpent} to="/despesas" />
           <Breakdown label="Faturas" value={s.creditInvoices} to="/cartoes" />

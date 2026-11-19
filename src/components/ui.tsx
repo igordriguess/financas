@@ -28,7 +28,7 @@ export function Card({ children, className, onClick }: { children: ReactNode; cl
 export function SectionTitle({ children, action }: { children: ReactNode; action?: ReactNode }) {
   return (
     <div className="mb-3 mt-8 flex items-center justify-between gap-3 px-1 first:mt-0">
-      <h2 className="text-[13px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{children}</h2>
+      <h2 className="text-[19px] font-bold tracking-tight text-slate-900 dark:text-white">{children}</h2>
       {action}
     </div>
   );
@@ -250,10 +250,10 @@ export function Money({ cents, className, sign, tone }: { cents: number; classNa
 export function PageHeader({ title, subtitle, back, actions }: { title: string; subtitle?: ReactNode; back?: boolean; actions?: ReactNode }) {
   const nav = useNavigate();
   return (
-    <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-3 bg-[#f5f6f8]/85 px-4 pb-3 pt-[max(12px,env(safe-area-inset-top))] backdrop-blur-xl dark:bg-ink-950/85 md:static md:mx-0 md:mb-6 md:bg-transparent md:px-0 md:pb-0 md:pt-8 md:backdrop-blur-none">
-      {back && <IconButton icon={ChevronLeft} label="Voltar" onClick={() => nav(-1)} className="-ml-2" />}
+    <header className="sticky top-0 z-20 -mx-4 mb-4 flex items-center gap-3 bg-[#f5f6f8]/80 px-4 pb-3 pt-[max(16px,env(safe-area-inset-top))] backdrop-blur-2xl backdrop-saturate-150 dark:bg-ink-950/80 md:static md:mx-0 md:mb-6 md:bg-transparent md:px-0 md:pb-0 md:pt-8 md:backdrop-blur-none">
+      {back && <IconButton icon={ChevronLeft} label="Voltar" onClick={() => nav(-1)} className="-ml-2 bg-white shadow-card dark:bg-ink-800" />}
       <div className="min-w-0 flex-1">
-        <h1 className="break-words text-[22px] font-bold leading-tight tracking-tight text-slate-900 dark:text-white">{title}</h1>
+        <h1 className="break-words text-[30px] font-bold leading-tight tracking-tight text-slate-900 dark:text-white md:text-[32px]">{title}</h1>
         {subtitle && <div className="mt-0.5 break-words text-[13px] text-slate-500 dark:text-slate-400">{subtitle}</div>}
       </div>
       {actions}
@@ -261,7 +261,21 @@ export function PageHeader({ title, subtitle, back, actions }: { title: string; 
   );
 }
 
-export function MonthSwitcher({ value, onChange, compact, min }: { value?: Month; onChange?: (m: Month) => void; compact?: boolean; /** Mês mais antigo permitido. */ min?: Month }) {
+export function MonthSwitcher({
+  value,
+  onChange,
+  compact,
+  min,
+  onBrand,
+  className,
+}: {
+  value?: Month;
+  onChange?: (m: Month) => void;
+  compact?: boolean;
+  /** Mês mais antigo permitido. */ min?: Month;
+  /** Versão translúcida, para ficar sobre o fundo azul. */ onBrand?: boolean;
+  className?: string;
+}) {
   const storeMonth = useStore((s) => s.month);
   const setMonth = useStore((s) => s.setMonth);
   const raw = value ?? storeMonth;
@@ -270,13 +284,20 @@ export function MonthSwitcher({ value, onChange, compact, min }: { value?: Month
   const atMin = !!min && m <= min;
   const isCurrent = m === currentMonth();
   return (
-    <div className={cx('flex items-center justify-between rounded-2xl bg-white p-1 shadow-card ring-1 ring-black/[0.03] dark:bg-ink-800 dark:ring-white/[0.06]', compact && 'inline-flex')}>
-      <IconButton icon={ChevronLeft} label="Mês anterior" disabled={atMin} onClick={() => change(addMonths(m, -1))} className={cx(atMin && 'opacity-30')} />
+    <div
+      className={cx(
+        'flex items-center justify-between rounded-2xl p-1',
+        onBrand ? 'bg-white/15 ring-1 ring-white/20' : 'bg-white shadow-card ring-1 ring-black/[0.03] dark:bg-ink-800 dark:ring-white/[0.06]',
+        compact && 'inline-flex',
+        className,
+      )}
+    >
+      <IconButton icon={ChevronLeft} label="Mês anterior" disabled={atMin} onClick={() => change(addMonths(m, -1))} className={cx(atMin && 'opacity-30', onBrand && 'text-white hover:bg-white/15 dark:text-white dark:hover:bg-white/15')} />
       <button onClick={() => change(currentMonth())} className="flex min-w-[140px] flex-col items-center px-2" title="Voltar para o mês atual">
-        <span className="text-[15px] font-semibold text-slate-900 dark:text-white">{monthLabel(m)}</span>
-        {!isCurrent && <span className="text-[11px] font-medium text-brand-500">Toque para voltar a hoje</span>}
+        <span className={cx('text-[15px] font-semibold', onBrand ? 'text-white' : 'text-slate-900 dark:text-white')}>{monthLabel(m)}</span>
+        {!isCurrent && <span className={cx('text-[11px] font-medium', onBrand ? 'text-white/80' : 'text-brand-500')}>Toque para voltar a hoje</span>}
       </button>
-      <IconButton icon={ChevronRight} label="Próximo mês" onClick={() => change(addMonths(m, 1))} />
+      <IconButton icon={ChevronRight} label="Próximo mês" onClick={() => change(addMonths(m, 1))} className={cx(onBrand && 'text-white hover:bg-white/15 dark:text-white dark:hover:bg-white/15')} />
     </div>
   );
 }
